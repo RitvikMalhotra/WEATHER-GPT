@@ -1,0 +1,37 @@
+- generic [ref=f13e2]:
+  - banner [ref=f13e3]:
+    - generic [ref=f13e4]:
+      - generic [ref=f13e9]:
+        - heading "WeatherGPT" [level=1] [ref=f13e10]
+        - paragraph [ref=f13e11]: Your AI-powered weather intelligence, grounded in real meteorological data.
+      - generic [ref=f13e12]:
+        - button "Hyderabad, Telangana" [ref=f13e14] [cursor=pointer]
+        - button "English" [ref=f13e21] [cursor=pointer]
+  - generic [ref=f13e27]:
+    - region [ref=f13e28]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=f13e29]
+      - paragraph [ref=f13e30]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=f13e31]:
+        - listitem [ref=f13e32]: Never invents a value
+        - listitem [ref=f13e35]: Names its source every time
+        - listitem [ref=f13e38]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=f13e41]
+  - generic [ref=f13e43]:
+    - group "Suggested questions" [ref=f13e44]:
+      - button "What is the weather in Hyderabad?" [ref=f13e45] [cursor=pointer]
+      - button "Will it rain tomorrow in Hyderabad?" [ref=f13e46] [cursor=pointer]
+      - button "7 day forecast in Hyderabad" [ref=f13e47] [cursor=pointer]
+      - button "GFS forecast in Hyderabad" [ref=f13e48] [cursor=pointer]
+    - generic [ref=f13e49]:
+      - generic [ref=f13e50]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=f13e51]:
+        - /placeholder: Ask WeatherGPT anything about the weather…
+      - paragraph [ref=f13e52]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=f13e53] [cursor=pointer]
+      - button "Send question" [disabled] [ref=f13e56]
+    - generic [ref=f13e59]:
+      - generic [ref=f13e60]:
+        - button "Speak" [ref=f13e61] [cursor=pointer]
+        - button "Replay" [disabled] [ref=f13e65]
+        - button "Stop" [disabled] [ref=f13e69]
+      - status [ref=f13e73]

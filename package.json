@@ -1,0 +1,13 @@
+{
+  "name": "weathergpt",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-command local launcher for WeatherGPT. The FastAPI service serves both the JSON API and the browser client, so this starts one process, not two.",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:reload": "node scripts/dev.mjs --reload"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

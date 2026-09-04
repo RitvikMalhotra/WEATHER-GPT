@@ -30,15 +30,25 @@ from app.domain.location import Location
 from app.domain.weather import WeatherReport
 from app.ingestion.pipeline import IngestionPipeline
 from app.ingestion.validation import WeatherValidator
+from app.providers.gfs.provider import GFS_PROVIDER_ID, GfsProvider
+from app.providers.imd.client import ImdClient
+from app.providers.imd.provider import IMD_PROVIDER_ID, ImdProvider
 from app.providers.http import UpstreamHttpClient, build_http_client
 from app.providers.open_meteo.client import PROVIDER_ID, OpenMeteoClient
+from app.providers.geoapify.geocoding import GEOAPIFY_GEOCODER_ID, GeoapifyGeocodingClient
+from app.providers.nominatim.geocoding import (
+    NOMINATIM_GEOCODER_ID,
+    NominatimGeocodingClient,
+)
 from app.providers.open_meteo.geocoding import OpenMeteoGeocodingClient
 from app.providers.open_meteo.provider import OpenMeteoProvider
 from app.providers.registry import ProviderRegistry
 from app.services.alerts import AlertService
 from app.services.cache import TTLCache
 from app.services.geocoding import GeocodingService
+from app.services.archive import ArchiveReader
 from app.services.history import HistoryService
+from app.services.subscriptions import SubscriptionService
 from app.services.persistence import PersistenceService
 from app.services.weather_service import WeatherService
 
@@ -57,6 +67,7 @@ class ApplicationContainer:
     persistence: PersistenceService
     history: HistoryService
     alerts: AlertService
+    subscriptions: SubscriptionService
     http_client: httpx.AsyncClient
     database: Database | None = None
 
@@ -104,6 +115,38 @@ def build_container(
             )
         )
     )
+    # NOAA GFS, registered alongside Open-Meteo rather than replacing it: the
+    # blend stays the default, and GFS is selected by name with ?provider=.
+    if settings.GFS_ENABLED:
+        registry.register(
+            GfsProvider(
+                OpenMeteoClient(
+                    upstream(GFS_PROVIDER_ID),
+                    forecast_url=settings.GFS_FORECAST_URL,
+                ),
+                metadata_http=upstream(GFS_PROVIDER_ID),
+                metadata_url=settings.GFS_RUN_METADATA_URL,
+            )
+        )
+
+    # IMD, India's official service. Registered only with a key: without one
+    # every IMD call is a 401, and a provider that always fails is worse than
+    # one that is absent. Coverage puts it ahead of the global sources inside
+    # India; outside India the registry drops it entirely.
+    if settings.IMD_ENABLED and settings.IMD_API_KEY:
+        registry.register(
+            ImdProvider(
+                ImdClient(
+                    upstream(IMD_PROVIDER_ID),
+                    base_url=settings.IMD_BASE_URL,
+                    api_key=settings.IMD_API_KEY,
+                    api_key_header=settings.IMD_API_KEY_HEADER,
+                    api_key_param=settings.IMD_API_KEY_PARAM,
+                ),
+                max_station_distance_km=settings.IMD_MAX_STATION_DISTANCE_KM,
+                catalogue_ttl=timedelta(hours=settings.IMD_STATION_CACHE_HOURS),
+            )
+        )
 
     validator = WeatherValidator(
         max_age=timedelta(minutes=settings.MAX_OBSERVATION_AGE_MINUTES),
@@ -111,13 +154,36 @@ def build_container(
     )
     pipeline = IngestionPipeline(registry, validator)
 
+    # Geocoding, in order of what each source can *see*. Geoapify leads when a
+    # key is configured; otherwise OpenStreetMap does, because it needs no key
+    # and indexes the localities and Hindi place names the population-
+    # thresholded gazetteer omits. Open-Meteo backs whichever leads.
+    open_meteo_gazetteer = OpenMeteoGeocodingClient(
+        upstream("open-meteo-geocoding"),
+        search_url=settings.OPEN_METEO_GEOCODING_URL,
+    )
+    primary_gazetteer = open_meteo_gazetteer
+    if settings.GEOAPIFY_API_KEY:
+        primary_gazetteer = GeoapifyGeocodingClient(
+            upstream(GEOAPIFY_GEOCODER_ID),
+            search_url=settings.GEOAPIFY_GEOCODE_URL,
+            api_key=settings.GEOAPIFY_API_KEY,
+        )
+    elif settings.NOMINATIM_ENABLED:
+        primary_gazetteer = NominatimGeocodingClient(
+            upstream(NOMINATIM_GEOCODER_ID),
+            search_url=settings.NOMINATIM_SEARCH_URL,
+            reverse_url=settings.NOMINATIM_REVERSE_URL,
+            min_interval_seconds=settings.NOMINATIM_MIN_INTERVAL_SECONDS,
+        )
+
     geocoding = GeocodingService(
-        OpenMeteoGeocodingClient(
-            upstream("open-meteo-geocoding"),
-            search_url=settings.OPEN_METEO_GEOCODING_URL,
-        ),
+        primary_gazetteer,
         cache=TTLCache[list[Location]](
             ttl_seconds=settings.GEOCODING_CACHE_TTL_SECONDS
+        ),
+        fallback=(
+            open_meteo_gazetteer if primary_gazetteer is not open_meteo_gazetteer else None
         ),
     )
 
@@ -134,7 +200,9 @@ def build_container(
         database if settings.PERSISTENCE_ENABLED else None,
         generation_bucket_minutes=settings.FORECAST_GENERATION_BUCKET_MINUTES,
     )
-    history = HistoryService(database)
+    # The database answers what this deployment recorded; the archive answers
+    # everything it did not, through the same provider interface.
+    history = HistoryService(database, ArchiveReader(registry))
 
     alerts = AlertService(
         AlertEngine(
@@ -174,6 +242,12 @@ def build_container(
             "alert_evaluation": alerts.enabled,
         },
     )
+    # Watched locations. Holds no alert logic: it runs the ordinary weather
+    # pipeline for a saved point, and the engine downstream does the rest.
+    subscriptions = SubscriptionService(
+        database, weather=weather, alerts=alerts, geocoding=geocoding
+    )
+
     return ApplicationContainer(
         settings=settings,
         registry=registry,
@@ -183,6 +257,7 @@ def build_container(
         persistence=persistence,
         history=history,
         alerts=alerts,
+        subscriptions=subscriptions,
         http_client=http_client,
         database=database,
     )

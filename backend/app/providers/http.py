@@ -90,9 +90,19 @@ class UpstreamHttpClient:
         self._backoff_seconds = backoff_seconds
 
     async def get_json(
-        self, url: str, params: Mapping[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """GET ``url`` and return the decoded JSON object.
+        self,
+        url: str,
+        params: Mapping[str, Any] | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+        allow_array: bool = False,
+    ) -> Any:
+        """GET ``url`` and return the decoded JSON.
+
+        ``headers`` carries per-request credentials for sources that need one.
+        ``allow_array`` accepts a top-level JSON array, which some sources use
+        for record lists; it stays opt-in so a source that promises an object
+        still fails loudly when it returns something else.
 
         Raises:
             WeatherProviderTimeoutError: every attempt exceeded the deadline.
@@ -106,7 +116,7 @@ class UpstreamHttpClient:
                 await self._sleep_before_retry(attempt)
 
             try:
-                response = await self._client.get(url, params=params)
+                response = await self._client.get(url, params=params, headers=headers)
             except httpx.TimeoutException as exc:
                 last_error = exc
                 self._log_retry(attempt, url, reason="timeout")
@@ -123,7 +133,7 @@ class UpstreamHttpClient:
                 self._log_retry(attempt, url, reason=f"http_{response.status_code}")
                 continue
 
-            return self._decode(response, url)
+            return self._decode(response, url, allow_array=allow_array)
 
         # Every attempt failed.
         if isinstance(last_error, httpx.TimeoutException):
@@ -143,7 +153,9 @@ class UpstreamHttpClient:
             },
         ) from last_error
 
-    def _decode(self, response: httpx.Response, url: str) -> dict[str, Any]:
+    def _decode(
+        self, response: httpx.Response, url: str, *, allow_array: bool = False
+    ) -> Any:
         if response.is_error:
             raise WeatherProviderError(
                 f"{self._provider_id} returned HTTP {response.status_code}.",
@@ -164,6 +176,8 @@ class UpstreamHttpClient:
                 details={"url": url},
             ) from exc
 
+        if allow_array and isinstance(payload, list):
+            return payload
         if not isinstance(payload, dict):
             raise WeatherProviderError(
                 f"{self._provider_id} returned {type(payload).__name__}, expected an object.",

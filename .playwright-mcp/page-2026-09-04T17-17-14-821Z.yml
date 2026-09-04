@@ -1,0 +1,37 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - generic [ref=f1e4]:
+      - generic [ref=f1e9]:
+        - heading "WeatherGPT" [level=1] [ref=f1e10]
+        - paragraph [ref=f1e11]: Your AI-powered weather intelligence, grounded in real meteorological data.
+      - generic [ref=f1e12]:
+        - button "Choose a location" [ref=f1e14] [cursor=pointer]
+        - button "English" [ref=f1e21] [cursor=pointer]
+  - generic [ref=f1e27]:
+    - region [ref=f1e28]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=f1e29]
+      - paragraph [ref=f1e30]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=f1e31]:
+        - listitem [ref=f1e32]: Never invents a value
+        - listitem [ref=f1e35]: Names its source every time
+        - listitem [ref=f1e38]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=f1e41]
+  - generic [ref=f1e43]:
+    - group "Suggested questions" [ref=f1e44]:
+      - button "What is the weather?" [ref=f1e45] [cursor=pointer]
+      - button "Will it rain tomorrow?" [ref=f1e46] [cursor=pointer]
+      - button "7 day forecast" [ref=f1e47] [cursor=pointer]
+      - button "GFS forecast" [ref=f1e48] [cursor=pointer]
+    - generic [ref=f1e49]:
+      - generic [ref=f1e50]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=f1e51]:
+        - /placeholder: Ask WeatherGPT anything about the weather…
+      - paragraph [ref=f1e52]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=f1e53] [cursor=pointer]
+      - button "Send question" [disabled] [ref=f1e56]
+    - generic [ref=f1e59]:
+      - generic [ref=f1e60]:
+        - button "Speak" [ref=f1e61] [cursor=pointer]
+        - button "Replay" [disabled] [ref=f1e65]
+        - button "Stop" [disabled] [ref=f1e69]
+      - status [ref=f1e73]

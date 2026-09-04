@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
 
+from app.ai.service import build_ai_service
 from app.api.router import build_api_router
 from app.config.logging import (
     REQUEST_ID_HEADER,
@@ -34,6 +35,7 @@ from app.core.dependencies import (
     register_provider_probes,
 )
 from app.core.exceptions import register_exception_handlers
+from app.services.monitor import AlertMonitor
 
 logger = get_logger(__name__)
 
@@ -59,16 +61,18 @@ Two guarantees hold for every meteorological value this API returns:
 Every response carries provenance: which source served it, which model produced
 it, when it was fetched, and how it must be attributed.
 
-**Phase 4 (current)** — providers, ingestion, normalisation and validation;
-PostgreSQL/PostGIS persistence with historical and spatial queries; and a
-deterministic alert and risk engine.
+**Current build** — providers, ingestion, normalisation and validation;
+PostgreSQL/PostGIS persistence with historical and spatial queries; a
+deterministic alert and risk engine; and a read-only conversational layer.
 
 Alerts are produced by configurable thresholds applied to validated data, and
 each one records the rule, the value, the threshold and the source behind it.
 They are **not** official meteorological warnings, and no language model
 participates in deciding that an alert exists — that boundary is deliberate.
 
-**Next** — the AI explanation layer, which explains alerts it did not create.
+The conversational layer calls this versioned API for every weather fact. A
+language model may select a read-only tool, but it cannot create alerts or
+author weather values.
 """
 
 OPENAPI_TAGS = [
@@ -105,6 +109,13 @@ OPENAPI_TAGS = [
             "their capabilities and their attribution requirements."
         ),
     },
+    {
+        "name": "AI",
+        "description": (
+            "Read-only conversational orchestration over validated WeatherGPT API "
+            "responses. Models select tools but do not generate weather facts or alerts."
+        ),
+    },
 ]
 
 
@@ -121,10 +132,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     container = build_container(settings)
     app.state.container = container
+    app.state.ai_service = build_ai_service(settings)
     readiness = get_readiness_registry()
     register_provider_probes(container.registry, readiness)
     if container.database is not None:
         register_database_probe(container.database, readiness)
+
+    # Automatic evaluation of watched locations. One in-process task; it holds
+    # no alert logic and calls the same service the refresh endpoint calls.
+    monitor = AlertMonitor(
+        container.subscriptions,
+        interval_seconds=settings.ALERT_MONITOR_INTERVAL_SECONDS,
+        batch_size=settings.ALERT_MONITOR_BATCH_SIZE,
+    )
+    app.state.monitor = monitor
+    if settings.ALERT_MONITOR_ENABLED:
+        monitor.start()
 
     logger.info(
         "application.startup",
@@ -136,11 +159,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "debug": settings.DEBUG,
             "providers": [p.metadata.provider_id for p in container.registry.all()],
             "persistence": container.persistence.enabled,
+            "alert_monitor": monitor.running,
         },
     )
     try:
         yield
     finally:
+        await monitor.stop()
+        await app.state.ai_service.aclose()
         await container.aclose()
         logger.info("application.shutdown", extra={"service": settings.SERVICE_NAME})
 

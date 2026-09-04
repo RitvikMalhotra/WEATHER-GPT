@@ -22,6 +22,14 @@ from app.config.settings import Settings
 
 def build_api_router(settings: Settings) -> APIRouter:
     """Compose the versioned routers into a single mountable router."""
+    # Imported lazily to keep the public API schemas usable as typed contracts
+    # by the downstream AI client without an import cycle through app.api.
+    from app.ai.router import router as ai_router
+    from app.voice.router import router as voice_router
+
     router = APIRouter()
     router.include_router(v1_router, prefix=settings.API_V1_PREFIX)
+    router.include_router(ai_router, prefix=settings.API_V1_PREFIX)
+    # Unversioned: a page a person opens, not an API contract.
+    router.include_router(voice_router)
     return router

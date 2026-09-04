@@ -19,6 +19,10 @@ from app.providers.http import UpstreamHttpClient
 
 PROVIDER_ID = "open-meteo"
 
+#: How far back the forecast endpoint will serve past hours. Open-Meteo's
+#: documented ceiling; a larger value is rejected upstream.
+MAX_PAST_DAYS = 92
+
 #: Variables requested for current conditions.
 CURRENT_VARIABLES: tuple[str, ...] = (
     "temperature_2m",
@@ -122,6 +126,7 @@ class OpenMeteoClient:
         hourly: bool = False,
         daily: bool = False,
         forecast_days: int | None = None,
+        past_days: int | None = None,
     ) -> OpenMeteoPayload:
         """Request the given series for one point.
 
@@ -144,6 +149,10 @@ class OpenMeteoClient:
             params["daily"] = ",".join(DAILY_VARIABLES)
         if forecast_days is not None:
             params["forecast_days"] = forecast_days
+        # Past hours arrive in the same hourly block as the forecast, from
+        # the same models, so nothing downstream needs to know which is which.
+        if past_days is not None:
+            params["past_days"] = min(past_days, MAX_PAST_DAYS)
 
         body = await self._http.get_json(self._forecast_url, params=params)
         return OpenMeteoPayload.model_validate(body)

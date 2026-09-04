@@ -26,6 +26,7 @@ class DataProvenance(BaseModel):
                 "provider_name": "Open-Meteo",
                 "model": "best_match",
                 "fetched_at": "2026-09-04T07:30:00Z",
+                "model_run_at": None,
                 "source_url": "https://api.open-meteo.com/v1/forecast",
                 "license": "CC-BY-4.0",
                 "attribution": "Weather data by Open-Meteo.com",
@@ -48,6 +49,15 @@ class DataProvenance(BaseModel):
     )
     fetched_at: datetime = Field(
         description="UTC instant the upstream response was received."
+    )
+    model_run_at: datetime | None = Field(
+        default=None,
+        description=(
+            "UTC initialisation time of the numerical model run behind these "
+            "values, when the source discloses it. A forecast is only as fresh "
+            "as its run: two responses fetched minutes apart can come from the "
+            "same 06Z cycle."
+        ),
     )
     source_url: str | None = Field(
         default=None, description="Upstream endpoint the data was read from."

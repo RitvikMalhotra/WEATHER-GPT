@@ -9,6 +9,11 @@ against a fake.
 from app.db.repositories.alerts import AlertFilter, AlertRepository, NearbyAlert
 from app.db.repositories.forecasts import ForecastRepository
 from app.db.repositories.observations import NearbyObservation, ObservationRepository
+from app.db.repositories.subscriptions import (
+    SubscriptionRepository,
+    row_to_location,
+    subscription_values,
+)
 
 __all__ = [
     "AlertFilter",
@@ -17,4 +22,7 @@ __all__ = [
     "NearbyAlert",
     "NearbyObservation",
     "ObservationRepository",
+    "SubscriptionRepository",
+    "row_to_location",
+    "subscription_values",
 ]

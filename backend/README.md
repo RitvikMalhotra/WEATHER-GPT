@@ -26,6 +26,108 @@ Two rules the whole design exists to enforce:
 
 ---
 
+## Conversational AI layer
+
+`POST /api/v1/ai/chat` is a read-only, grounded interface over the existing
+FastAPI contracts. It detects current, hourly/daily forecast, historical,
+alerts, and travel/agriculture-planning intents; calls only WeatherGPT API
+routes; and retains a short-lived location context when the caller returns the
+`session_id` on a follow-up request.
+
+Responses are deterministically rendered from the tool result from the current
+turn. They include provider, model, fetch time, cache state, source URL,
+licence and attribution when the underlying contract supplies them. The layer
+does not call weather providers, write to the database, or create/modify alerts.
+Existing WeatherGPT alerts remain deterministic rule results, not official
+warnings.
+
+The default is dependency-free deterministic routing. For optional local LLM
+function selection, set `AI_LLM_PROVIDER=openai_compatible` and point
+`AI_LLM_BASE_URL` at an OpenAI-compatible local endpoint such as Ollama, vLLM,
+or llama.cpp. Model prose and model-supplied weather arguments are discarded;
+only validated, backend-derived facts reach the response.
+
+### Running the demo with Groq
+
+Groq is the hosted provider; it speaks the OpenAI chat-completions dialect, so
+it uses the same adapter as a local model. Put the key in `backend/.env`, which
+is gitignored:
+
+```bash
+AI_LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_...                       # never commit this
+GROQ_MODEL=openai/gpt-oss-120b            # optional; this is the default
+AI_BACKEND_BASE_URL=http://127.0.0.1:8000  # the AI layer calls this API
+```
+
+Then start the API and exercise the demo scenarios:
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+python scripts/demo_ai.py --hindi
+```
+
+`scripts/demo_ai.py` asserts the property that matters: every number in an
+answer also appears in the tool result the backend returned for that turn.
+
+### Hindi
+
+Asking in Hindi returns Hindi. The catalog in `app/ai/grounding.py` supplies
+the *labels*; the numbers are copied from the backend response, so no value
+passes through a model on its way to the reader. Weather condition text
+("Overcast") comes from the provider and stays in the provider's language.
+
+Keyword detection reads English, so a question in another language arrives
+unrouted. A model may route that question, but only within fixed limits: the
+choice is restricted to the read-only current, forecast, alerts and risk tools;
+the location must already be known from the user's message or the session
+context; and every argument is still derived deterministically. A model can
+therefore never name a place, choose a date range, or reach the historical and
+location-search tools, whose arguments only a user can supply.
+
+## Location resolution
+
+A weather answer is only as good as the point it was measured at, and Indian
+locality names repeat: "Miyapur" is a suburb of Hyderabad and also a village in
+Karnataka. Two things keep that from becoming a silently wrong answer.
+
+**Two gazetteers, in order.** `GeocodingService` queries a primary client and
+falls through to a second when the first returns nothing or is unreachable.
+Open-Meteo's gazetteer only indexes populated places above a population
+threshold, so a suburb is *absent* from it rather than ranked low — no amount of
+asking for more candidates finds it. With `GEOAPIFY_API_KEY` set, Geoapify leads
+and Open-Meteo backs it up; without the key the chain is a single Open-Meteo
+client and every location query behaves exactly as it did before.
+
+Geoapify resolves locations and nothing else. It never returns a weather value;
+its coordinates enter the same provider chain as any other. The key is read from
+the environment and never reaches a browser — the client calls
+`/api/v1/locations/search`, and this service calls Geoapify.
+
+**Candidates, not a guess.** `/api/v1/locations/search` returns ranked
+candidates with their state and country, so a caller can disambiguate instead of
+accepting a best match. The `/voice` client uses that twice: in its location
+picker, and after an answer, to offer alternatives whenever the resolved name
+belongs to more than one administrative area.
+
+---
+
+## The client
+
+`GET /voice` serves a conversational client — `app/voice/page.html` with
+`styles.css` and `app.js` beside it. No build step, no framework, no bundler.
+
+It is a consumer of this API like any other: questions go to
+`/api/v1/ai/chat`, places to `/api/v1/locations/search`, and speech recognition
+and synthesis run in the browser. It holds no weather logic, no provider
+selection and no model credentials. Times are shown on a 12-hour clock and dates
+as DD-MM-YYYY in the resolved location's timezone; that is a presentation-layer
+conversion, and nothing is sent back to the API reformatted.
+
+`DESIGN.md` at the repository root documents its visual system.
+
+---
+
 ## Quick start
 
 ```bash
@@ -314,6 +416,8 @@ hard-coded and no secret is committed.
 | `FORECAST_GENERATION_BUCKET_MINUTES` | `60` | forecast generation window |
 | `HISTORY_DEFAULT_RADIUS_KM` / `_MAX_RADIUS_KM` | `25` / `500` | historical search radius |
 | `HISTORY_MAX_RANGE_DAYS` / `_MAX_RESULTS` | `366` / `1000` | historical query bounds |
+| `GEOAPIFY_API_KEY` | *(unset)* | enables locality-level geocoding; unset keeps Open-Meteo alone |
+| `GEOAPIFY_GEOCODE_URL` | Geoapify search endpoint | geocoding only, never weather |
 
 ---
 
@@ -329,7 +433,8 @@ backend/
 │   ├── domain/          the canonical meteorological model
 │   ├── ingestion/       pipeline and validation engine
 │   ├── providers/       provider contract and implementations
-│   └── services/        weather, geocoding, persistence, history, cache
+│   ├── services/        weather, geocoding, persistence, history, cache
+│   └── voice/           the /voice client: page.html, styles.css, app.js
 ├── alembic/             migrations
 └── tests/
 ```

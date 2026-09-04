@@ -1,0 +1,37 @@
+- generic [ref=f2e2]:
+  - banner [ref=f2e3]:
+    - generic [ref=f2e4]:
+      - generic [ref=f2e9]:
+        - heading "WeatherGPT" [level=1] [ref=f2e10]
+        - paragraph [ref=f2e11]: Your AI-powered weather intelligence, grounded in real meteorological data.
+      - generic [ref=f2e12]:
+        - button "Hyderabad, Telangana" [ref=f2e14] [cursor=pointer]
+        - button "English" [ref=f2e21] [cursor=pointer]
+  - generic [ref=f2e27]:
+    - region [ref=f2e28]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=f2e29]
+      - paragraph [ref=f2e30]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=f2e31]:
+        - listitem [ref=f2e32]: Never invents a value
+        - listitem [ref=f2e35]: Names its source every time
+        - listitem [ref=f2e38]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=f2e41]
+  - generic [ref=f2e43]:
+    - group "Suggested questions" [ref=f2e44]:
+      - button "What is the weather in Hyderabad?" [ref=f2e45] [cursor=pointer]
+      - button "Will it rain tomorrow in Hyderabad?" [ref=f2e46] [cursor=pointer]
+      - button "7 day forecast in Hyderabad" [ref=f2e47] [cursor=pointer]
+      - button "GFS forecast in Hyderabad" [ref=f2e48] [cursor=pointer]
+    - generic [ref=f2e49]:
+      - generic [ref=f2e50]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=f2e51]:
+        - /placeholder: Ask WeatherGPT anything about the weather…
+      - paragraph [ref=f2e52]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=f2e53] [cursor=pointer]
+      - button "Send question" [disabled] [ref=f2e56]
+    - generic [ref=f2e59]:
+      - generic [ref=f2e60]:
+        - button "Speak" [ref=f2e61] [cursor=pointer]
+        - button "Replay" [disabled] [ref=f2e65]
+        - button "Stop" [disabled] [ref=f2e69]
+      - status [ref=f2e73]

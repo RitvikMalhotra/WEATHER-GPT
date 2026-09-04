@@ -129,7 +129,7 @@ class IngestionPipeline:
         failure: type[WeatherGPTError],
         coordinates: Coordinates,
     ) -> T:
-        candidates = self._candidates(capability, provider_id)
+        candidates = self._candidates(capability, provider_id, coordinates)
         if not candidates:
             raise failure(
                 f"No registered provider can serve {capability.value}.",
@@ -212,7 +212,10 @@ class IngestionPipeline:
         )
 
     def _candidates(
-        self, capability: ProviderCapability, provider_id: str | None
+        self,
+        capability: ProviderCapability,
+        provider_id: str | None,
+        coordinates: Coordinates | None = None,
     ) -> Sequence[WeatherProvider]:
         """Sources to try, in order.
 
@@ -222,4 +225,10 @@ class IngestionPipeline:
         """
         if provider_id is not None:
             return [self._registry.get(provider_id)]
-        return self._registry.for_capability(capability)
+        if coordinates is None:
+            return self._registry.for_capability(capability)
+        return self._registry.for_capability(
+            capability,
+            latitude=coordinates.latitude,
+            longitude=coordinates.longitude,
+        )

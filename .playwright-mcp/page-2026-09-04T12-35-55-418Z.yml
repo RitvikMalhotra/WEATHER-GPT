@@ -1,0 +1,19 @@
+- main [ref=e2]:
+  - heading "WeatherGPT Voice" [level=1] [ref=e3]
+  - generic [ref=e4]: Speech → WeatherGPT → grounded answer → speech. Every value comes from the backend.
+  - generic [ref=e5]:
+    - button "🎤 Speak" [ref=e6] [cursor=pointer]
+    - button "English" [ref=e7] [cursor=pointer]
+    - button "हिंदी" [ref=e8] [cursor=pointer]
+    - button "🔊 Replay" [disabled] [ref=e9]
+    - button "⏹ Stop" [disabled] [ref=e10]
+  - textbox "…or type a question and press Enter" [ref=e13]
+  - generic [ref=e14]:
+    - generic [ref=e15]: Heard
+    - generic [ref=e16]: —
+  - generic [ref=e17]:
+    - generic [ref=e18]: Answer
+    - generic [ref=e19]: —
+  - generic [ref=e20]:
+    - generic [ref=e21]: Source
+    - generic [ref=e22]: —

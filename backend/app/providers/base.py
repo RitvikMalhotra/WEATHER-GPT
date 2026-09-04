@@ -64,9 +64,21 @@ class ProviderMetadata:
     max_forecast_days: int = 16
     #: Extra, provider-specific notes surfaced in the providers endpoint.
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: Area this source covers, as (south, west, north, east) in degrees.
+    #: ``None`` means global. A source that covers a region is preferred inside
+    #: it and excluded outside it, which is how a national service becomes the
+    #: source for its own country without anyone choosing it by hand.
+    coverage: tuple[float, float, float, float] | None = None
 
     def supports(self, capability: ProviderCapability) -> bool:
         return capability in self.capabilities
+
+    def covers(self, latitude: float, longitude: float) -> bool:
+        """Whether this source serves the point. Global sources serve every point."""
+        if self.coverage is None:
+            return True
+        south, west, north, east = self.coverage
+        return south <= latitude <= north and west <= longitude <= east
 
 
 class WeatherProvider(ABC):
@@ -101,6 +113,27 @@ class WeatherProvider(ABC):
             WeatherProviderError: the upstream call failed or returned data
                 that could not be normalised.
         """
+
+    async def fetch_archive(self, coordinates: Coordinates, *, past_days: int) -> Forecast:
+        """Return recent past observations, normalised to the canonical model.
+
+        Optional: a source that keeps no history declares no ``HISTORICAL``
+        capability and never receives this call. It is deliberately not
+        abstract, so adding archive support to one provider does not break
+        every other implementation of this interface.
+
+        The return type is :class:`Forecast` because the shape is identical —
+        a location, a provenance and an hourly series. Only the direction in
+        time differs, and the caller already knows which way it asked.
+
+        Raises:
+            NotImplementedError: this source keeps no archive.
+            WeatherProviderError: the upstream call failed or returned data
+                that could not be normalised.
+        """
+        raise NotImplementedError(
+            f"{self.metadata.provider_id} does not serve historical data."
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostic helper
         return f"<{type(self).__name__} id={self.metadata.provider_id!r}>"

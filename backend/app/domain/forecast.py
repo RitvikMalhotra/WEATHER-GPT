@@ -137,4 +137,12 @@ class Forecast(BaseModel):
     daily: list[DailyForecastPoint] = Field(
         default_factory=list, description="Daily series, empty when not requested."
     )
+    utc_offset_seconds: int | None = Field(
+        default=None,
+        description=(
+            "The location's offset from UTC for this series. Instants above are "
+            "stored in UTC; this is what turns one back into the local day a "
+            "person means when they say 'yesterday'."
+        ),
+    )
     provenance: DataProvenance = Field(description="Where the data came from.")

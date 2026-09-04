@@ -1,0 +1,38 @@
+- generic [ref=f3e2]:
+  - banner [ref=f3e3]:
+    - generic [ref=f3e4]:
+      - heading "WeatherGPT" [level=1] [ref=f3e10]
+      - generic [ref=f3e11]:
+        - button "Choose a location" [ref=f3e13] [cursor=pointer]
+        - button "English" [ref=f3e20] [cursor=pointer]
+        - button "Weather alerts" [ref=f3e27] [cursor=pointer]:
+          - generic [aria-hidden] [ref=f3e30]: "2"
+  - generic [ref=f3e31]:
+    - region [ref=f3e32]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=f3e33]
+      - paragraph [ref=f3e34]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=f3e35]:
+        - listitem [ref=f3e36]: Never invents a value
+        - listitem [ref=f3e39]: Names its source every time
+        - listitem [ref=f3e42]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=f3e45]
+  - generic [ref=f3e47]:
+    - group "Suggested questions" [ref=f3e48]:
+      - button "What is the weather?" [ref=f3e49] [cursor=pointer]
+      - button "Is there rain expected in 48 hours?" [ref=f3e50] [cursor=pointer]
+      - button "What was the rainfall yesterday?" [ref=f3e51] [cursor=pointer]
+      - button "What will the wind speed be in 6 hours?" [ref=f3e52] [cursor=pointer]
+      - button "7 day forecast" [ref=f3e53] [cursor=pointer]
+    - generic [ref=f3e54]:
+      - generic [ref=f3e55]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=f3e56]:
+        - /placeholder: Ask about the weather…
+      - paragraph [ref=f3e57]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=f3e58] [cursor=pointer]
+      - button "Send question" [disabled] [ref=f3e61]
+    - generic [ref=f3e64]:
+      - generic [ref=f3e65]:
+        - button "Speak" [ref=f3e66] [cursor=pointer]
+        - button "Replay" [disabled] [ref=f3e70]
+        - button "Stop" [disabled] [ref=f3e74]
+      - status [ref=f3e78]

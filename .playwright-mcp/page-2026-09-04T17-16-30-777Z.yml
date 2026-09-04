@@ -1,0 +1,37 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e9]:
+        - heading "WeatherGPT" [level=1] [ref=e10]
+        - paragraph [ref=e11]: Your AI-powered weather intelligence, grounded in real meteorological data.
+      - generic [ref=e12]:
+        - button "Choose a location" [ref=e14] [cursor=pointer]
+        - button "English" [ref=e21] [cursor=pointer]
+  - generic [ref=e27]:
+    - region [ref=e28]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=e29]
+      - paragraph [ref=e30]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=e31]:
+        - listitem [ref=e32]: Never invents a value
+        - listitem [ref=e35]: Names its source every time
+        - listitem [ref=e38]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=e41]
+  - generic [ref=e43]:
+    - group "Suggested questions" [ref=e44]:
+      - button "What is the weather?" [ref=e45] [cursor=pointer]
+      - button "Will it rain tomorrow?" [ref=e46] [cursor=pointer]
+      - button "7 day forecast" [ref=e47] [cursor=pointer]
+      - button "GFS forecast" [ref=e48] [cursor=pointer]
+    - generic [ref=e49]:
+      - generic [ref=e50]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=e51]:
+        - /placeholder: Ask WeatherGPT anything about the weather…
+      - paragraph [ref=e52]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=e53] [cursor=pointer]
+      - button "Send question" [disabled] [ref=e56]
+    - generic [ref=e59]:
+      - generic [ref=e60]:
+        - button "Speak" [ref=e61] [cursor=pointer]
+        - button "Replay" [disabled] [ref=e65]
+        - button "Stop" [disabled] [ref=e69]
+      - status [ref=e73]

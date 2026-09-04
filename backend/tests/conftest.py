@@ -25,6 +25,18 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ignore_developer_env_file() -> None:
+    """Run the suite against code defaults, not the developer's ``.env``.
+
+    ``Settings`` reads ``backend/.env`` when one exists, so a local file with a
+    database URL or a Groq key silently changed what the tests asserted. The
+    suite must describe the code, not one machine.
+    """
+    Settings.model_config["env_file"] = None
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     return get_settings()

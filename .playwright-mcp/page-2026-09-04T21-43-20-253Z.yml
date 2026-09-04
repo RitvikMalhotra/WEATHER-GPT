@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e9]:
+        - heading "WeatherGPT" [level=1] [ref=e10]
+        - paragraph [ref=e11]: Your AI-powered weather intelligence, grounded in real meteorological data.
+      - generic [ref=e12]:
+        - button "Choose a location" [ref=e14] [cursor=pointer]
+        - button "English" [ref=e21] [cursor=pointer]
+        - button "Alerts" [ref=e28] [cursor=pointer]
+  - generic [ref=e34]:
+    - region [ref=e35]:
+      - heading "Ask about the weather. Get the measurement, and the source." [level=2] [ref=e36]
+      - paragraph [ref=e37]: WeatherGPT reads live meteorological data through its own validated pipeline and answers in plain language — typed or spoken, in English or Hindi. Every figure comes from a source it names; nothing is estimated on your behalf.
+      - list [ref=e38]:
+        - listitem [ref=e39]: Never invents a value
+        - listitem [ref=e42]: Names its source every time
+        - listitem [ref=e45]: Asks when a place name is ambiguous
+    - log "Conversation" [ref=e48]
+  - generic [ref=e50]:
+    - group "Suggested questions" [ref=e51]:
+      - button "What is the weather?" [ref=e52] [cursor=pointer]
+      - button "Is there rain expected in 48 hours?" [ref=e53] [cursor=pointer]
+      - button "What was the rainfall yesterday?" [ref=e54] [cursor=pointer]
+      - button "What will the wind speed be in 6 hours?" [ref=e55] [cursor=pointer]
+      - button "7 day forecast" [ref=e56] [cursor=pointer]
+    - generic [ref=e57]:
+      - generic [ref=e58]: Ask WeatherGPT about the weather
+      - textbox "Ask WeatherGPT about the weather" [ref=e59]:
+        - /placeholder: Ask WeatherGPT anything about the weather…
+      - paragraph [ref=e60]: Press Enter to send. Press Shift and Enter for a new line.
+      - button "Dictate your question into the box" [ref=e61] [cursor=pointer]
+      - button "Send question" [disabled] [ref=e64]
+    - generic [ref=e67]:
+      - generic [ref=e68]:
+        - button "Speak" [ref=e69] [cursor=pointer]
+        - button "Replay" [disabled] [ref=e73]
+        - button "Stop" [disabled] [ref=e77]
+      - status [ref=e81]

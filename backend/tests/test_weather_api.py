@@ -308,6 +308,9 @@ def test_providers_endpoint_describes_the_source_layer(client):
         "current",
         "daily_forecast",
         "hourly_forecast",
+        # The forecast endpoint also serves recent past hours, which is what
+        # answers a question about yesterday on a deployment that stored nothing.
+        "historical",
     }
     assert provider["is_default"] is True
 

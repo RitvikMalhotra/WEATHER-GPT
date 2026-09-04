@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.v1.params import WEATHER_ERROR_RESPONSES, ProviderQuery
 from app.core.dependencies import HistoryServiceDep, SettingsDep
 from app.core.exceptions import WeatherGPTError
+from app.domain.location import Location
 from app.domain.provenance import DataProvenance
 from app.domain.weather import CurrentWeather
 from app.services.history import HistoricalRecord, HistoryQuery
@@ -106,6 +107,14 @@ class HistoricalWeatherResponse(BaseModel):
     requested: dict[str, float] = Field(
         description="The coordinates the caller asked about."
     )
+    location: Location | None = Field(
+        default=None,
+        description=(
+            "The place those coordinates resolved to, when the caller named "
+            "one. Present so an answer can say where it is about rather than "
+            "reciting a coordinate pair."
+        ),
+    )
     range: TimeRange = Field(description="The window that was searched.")
     search_radius_km: float = Field(
         description="Radius searched around the requested point."
@@ -117,6 +126,12 @@ class HistoricalWeatherResponse(BaseModel):
     observations: list[HistoricalObservation] = Field(
         description="Matching records, oldest first."
     )
+
+
+def _is_bare_date(raw: str) -> bool:
+    """True when the caller wrote a calendar date rather than an instant."""
+    text = raw.strip()
+    return "T" not in text and " " not in text
 
 
 def _parse_boundary(raw: str, *, field: str, end_of_day: bool) -> datetime:
@@ -171,10 +186,14 @@ def _parse_boundary(raw: str, *, field: str, end_of_day: bool) -> datetime:
         "`start` and `end` accept a date (`2026-08-01`) or a timestamp "
         "(`2026-08-01T06:00:00Z`). A bare `end` date covers the whole day. Both "
         "bounds are inclusive and interpreted as UTC when no offset is given.\n\n"
-        "An empty result is a 200 with `count: 0` — 'nothing recorded there' is a "
-        "valid answer, not an error."
+        "A window this deployment never recorded falls through to a provider "
+        "archive, normalised and stamped with provenance exactly like a live "
+        "response. Each record names the source that produced it, so stored and "
+        "archived data are told apart by their provenance rather than by trust.\n\n"
+        "An empty result is a 200 with `count: 0` — 'nobody has it' is a valid "
+        "answer, and better than a filled-in one."
     ),
-    response_description="Stored observations with provenance.",
+    response_description="Past observations with provenance.",
     responses=WEATHER_ERROR_RESPONSES,
 )
 async def historical_weather(
@@ -193,6 +212,14 @@ async def historical_weather(
     radius_km: Annotated[
         float | None,
         Query(gt=0.0, description="Search radius in kilometres."),
+    ] = None,
+    hour_from: Annotated[
+        int | None,
+        Query(ge=0, le=23, description="Keep only observations from this local hour."),
+    ] = None,
+    hour_to: Annotated[
+        int | None,
+        Query(ge=1, le=24, description="Keep only observations before this local hour."),
     ] = None,
     provider: ProviderQuery = None,
 ) -> HistoricalWeatherResponse:
@@ -220,6 +247,11 @@ async def historical_weather(
     )
     limit = settings.HISTORY_MAX_RESULTS
 
+    # A window written as dates belongs to the *location's* calendar. Passing
+    # that fact down is what stops "yesterday" in India from being answered
+    # with five and a half hours of the wrong day at each end.
+    calendar = _is_bare_date(start) and _is_bare_date(end)
+
     records = await service.observations(
         HistoryQuery(
             latitude=latitude,
@@ -229,6 +261,11 @@ async def historical_weather(
             radius_m=radius * 1000.0,
             provider_id=provider,
             limit=limit,
+            calendar_start=window_start.date() if calendar else None,
+            calendar_end=window_end.date() if calendar else None,
+            local_hours=(hour_from, hour_to)
+            if hour_from is not None and hour_to is not None
+            else None,
         )
     )
 

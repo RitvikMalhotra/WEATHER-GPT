@@ -304,11 +304,34 @@ def test_a_database_failure_leaks_nothing_internal(settings):
         assert leak not in lowered, f"response leaked {leak!r}: {body}"
 
 
-def test_history_without_a_configured_database_is_a_clean_503(settings):
-    """A deployment with no DATABASE_URL still answers, it just says so."""
+def test_history_without_a_database_falls_through_to_a_provider_archive(settings):
+    """A deployment that stored nothing still answers questions about the past.
+
+    "0 observations" is a true statement about our storage and a useless answer
+    to "how much rain fell yesterday?", so a window the database cannot cover is
+    served from a provider archive — normalised and stamped with provenance
+    exactly like a live response.
+    """
     app = create_app(settings)  # settings carry no DATABASE_URL in the test env
 
     with TestClient(app) as client:
+        response = _get(client, start="2026-08-01", end="2026-08-31")
+
+    assert response.status_code == 200
+    body = response.json()
+    # Whatever the stub upstream returns, every record names where it came from
+    # and nothing was invented to fill the window.
+    for observation in body["observations"]:
+        assert observation["provenance"]["provider_id"]
+        assert observation["provenance"]["fetched_at"]
+
+
+def test_history_with_no_source_at_all_is_a_clean_503(settings):
+    """No database and no archive-capable provider is an honest 503."""
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        app.state.container.history._archive = None  # noqa: SLF001 - no source at all
         response = _get(client, start="2026-08-01", end="2026-08-31")
 
     assert response.status_code == 503

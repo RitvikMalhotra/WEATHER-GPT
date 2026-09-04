@@ -93,6 +93,9 @@ class _SpatialRecord:
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    #: Initialisation time of the NWP run behind the values. Null for sources
+    #: that do not disclose one; never inferred from the fetch time.
+    model_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_url: Mapped[str | None] = mapped_column(String(512))
     license: Mapped[str | None] = mapped_column(String(128))
     attribution: Mapped[str | None] = mapped_column(String(256))
@@ -186,6 +189,9 @@ class WeatherForecast(Base):
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    #: Initialisation time of the NWP run behind the values. Null for sources
+    #: that do not disclose one; never inferred from the fetch time.
+    model_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_url: Mapped[str | None] = mapped_column(String(512))
     license: Mapped[str | None] = mapped_column(String(128))
     attribution: Mapped[str | None] = mapped_column(String(256))
@@ -350,8 +356,77 @@ class WeatherAlert(_SpatialRecord, Base):
     )
 
 
+class AlertSubscription(Base):
+    """A location a person asked WeatherGPT to keep watching.
+
+    This is the only new state the alerts feature needs. It holds *what to
+    watch*, never *what was found*: the alerts themselves stay in
+    ``weather_alerts``, produced by the deterministic engine exactly as they are
+    for any other request. A subscription is a standing instruction to run the
+    ordinary pipeline for a point on a schedule, nothing more.
+
+    The place is stored resolved — coordinates plus the administrative labels
+    the gazetteer returned — rather than as the text that was typed. Re-resolving
+    a name later could quietly land on a different Miyapur.
+    """
+
+    __tablename__ = "alert_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    #: Groups subscriptions belonging to one browser. Not an account: the
+    #: client mints it and keeps it, so a demo needs no sign-in and no personal
+    #: data is stored against a watch.
+    owner_key: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    location_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    geom: Mapped[object] = mapped_column(
+        Geography(geometry_type="POINT", srid=SRID), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    admin1: Mapped[str | None] = mapped_column(String(128))
+    country: Mapped[str | None] = mapped_column(String(128))
+    timezone: Mapped[str | None] = mapped_column(String(64))
+
+    #: Alert types this watch cares about. Empty means every rule the engine
+    #: runs — the sensible default, and the one that cannot silently omit a
+    #: hazard the person did not think to tick.
+    alert_types: Mapped[list | None] = mapped_column(JSONB)
+
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    #: When the monitor last ran the pipeline for this point. Displayed, so a
+    #: person can tell "no alerts" from "not checked yet".
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_alert_subscriptions_owner_key", "owner_key"),
+        Index("ix_alert_subscriptions_enabled", "enabled"),
+        Index("ix_alert_subscriptions_geom", "geom", postgresql_using="gist"),
+        # One watch per place per browser. Asking twice for the same point is a
+        # no-op, not a second row that doubles the evaluation work.
+        Index(
+            "uq_alert_subscriptions_owner_location",
+            "owner_key",
+            "location_key",
+            unique=True,
+        ),
+    )
+
+
 __all__ = [
     "SRID",
+    "AlertSubscription",
     "UNDISCLOSED_MODEL",
     "WeatherAlert",
     "WeatherForecast",

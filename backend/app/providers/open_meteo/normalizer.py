@@ -317,6 +317,7 @@ def normalize_forecast(payload: Any, *, provenance: DataProvenance) -> Forecast:
         location=build_location(payload),
         hourly=_normalize_hourly(payload),
         daily=_normalize_daily(payload),
+        utc_offset_seconds=getattr(payload, "utc_offset_seconds", None),
         provenance=provenance,
     )
     if not forecast.hourly and not forecast.daily:

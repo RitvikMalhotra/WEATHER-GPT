@@ -43,19 +43,50 @@ class ProviderRegistry:
         """Every registered provider, in fallback order."""
         return self._sorted(self._providers.values())
 
-    def for_capability(self, capability: ProviderCapability) -> list[WeatherProvider]:
-        """Providers able to serve ``capability``, in the order to try them."""
-        return self._sorted(
+    def for_capability(
+        self,
+        capability: ProviderCapability,
+        *,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> list[WeatherProvider]:
+        """Providers able to serve ``capability``, in the order to try them.
+
+        Given a point, a source whose declared coverage excludes it is dropped,
+        and a source that covers it regionally is tried first. That is what puts
+        a national service ahead of a global model inside its own country
+        without the caller, or a language model, choosing a provider.
+        """
+        candidates = [
             provider
             for provider in self._providers.values()
             if provider.metadata.supports(capability)
-        )
+        ]
+        if latitude is not None and longitude is not None:
+            candidates = [
+                provider
+                for provider in candidates
+                if provider.metadata.covers(latitude, longitude)
+            ]
+        return self._sorted(candidates, latitude=latitude, longitude=longitude)
 
-    def _sorted(self, providers) -> list[WeatherProvider]:
-        def sort_key(provider: WeatherProvider) -> tuple[int, int, str]:
+    def _sorted(
+        self,
+        providers,
+        *,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> list[WeatherProvider]:
+        located = latitude is not None and longitude is not None
+
+        def sort_key(provider: WeatherProvider) -> tuple[int, int, int, str]:
             metadata = provider.metadata
+            # A regional source that covers the point leads. This outranks the
+            # configured default deliberately: the default is the global
+            # fallback, not the best source for a country that runs its own.
+            regional_first = 0 if (located and metadata.coverage is not None) else 1
             is_default = metadata.provider_id != self._default_provider_id
-            return (int(is_default), metadata.priority, metadata.provider_id)
+            return (regional_first, int(is_default), metadata.priority, metadata.provider_id)
 
         return sorted(providers, key=sort_key)
 

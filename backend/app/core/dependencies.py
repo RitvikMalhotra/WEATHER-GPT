@@ -28,6 +28,7 @@ from app.providers.registry import ProviderRegistry
 from app.services.geocoding import GeocodingService
 from app.services.alerts import AlertService
 from app.services.history import HistoryService
+from app.services.subscriptions import SubscriptionService
 from app.services.persistence import PersistenceService
 from app.services.weather_service import WeatherService
 
@@ -74,6 +75,16 @@ def get_history_service(container: ContainerDep) -> HistoryService:
 
 
 HistoryServiceDep = Annotated[HistoryService, Depends(get_history_service)]
+
+
+def get_subscription_service(container: ContainerDep) -> SubscriptionService:
+    """The watched-location service owned by the lifespan container."""
+    return container.subscriptions
+
+
+SubscriptionServiceDep = Annotated[
+    SubscriptionService, Depends(get_subscription_service)
+]
 
 
 def get_persistence_service(container: ContainerDep) -> PersistenceService:

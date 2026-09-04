@@ -18,7 +18,7 @@ from app.domain.forecast import Forecast
 from app.domain.location import Coordinates
 from app.domain.weather import WeatherReport
 from app.providers.base import ProviderCapability, ProviderMetadata, WeatherProvider
-from app.providers.open_meteo.client import PROVIDER_ID, OpenMeteoClient
+from app.providers.open_meteo.client import MAX_PAST_DAYS, PROVIDER_ID, OpenMeteoClient
 from app.providers.open_meteo.normalizer import (
     build_provenance,
     normalize_current,
@@ -33,6 +33,10 @@ METADATA = ProviderMetadata(
             ProviderCapability.CURRENT,
             ProviderCapability.HOURLY_FORECAST,
             ProviderCapability.DAILY_FORECAST,
+            # The forecast endpoint also serves recent past hours from the same
+            # models, which is what answers "how much rain fell yesterday?" on
+            # a deployment that was not running yesterday.
+            ProviderCapability.HISTORICAL,
         }
     ),
     source_url="https://open-meteo.com",
@@ -80,6 +84,26 @@ class OpenMeteoProvider(WeatherProvider):
             hourly=include_hourly,
             daily=include_daily,
             forecast_days=min(days, METADATA.max_forecast_days),
+        )
+        return normalize_forecast(payload, provenance=self._provenance())
+
+    async def fetch_archive(self, coordinates: Coordinates, *, past_days: int) -> Forecast:
+        """Recent past hours for one point.
+
+        Open-Meteo serves up to 92 days of past data from the same endpoint and
+        the same models as the forecast, so the archive needs no second client,
+        no second schema and no second normaliser — and an archived hour is
+        normalised and validated exactly like a live one.
+        """
+        payload = await self._client.fetch(
+            latitude=coordinates.latitude,
+            longitude=coordinates.longitude,
+            hourly=True,
+            daily=True,
+            past_days=max(1, min(past_days, MAX_PAST_DAYS)),
+            # Nothing ahead of now is wanted, but the endpoint always returns
+            # at least the current day, which the caller filters by window.
+            forecast_days=1,
         )
         return normalize_forecast(payload, provenance=self._provenance())
 
