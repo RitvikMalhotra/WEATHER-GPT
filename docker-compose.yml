@@ -1,0 +1,36 @@
+# Local development infrastructure for the WeatherGPT backend.
+#
+#   docker compose up -d postgres
+#
+# Only the database lives here. Redis, workers and the AI services belong to the
+# phases that introduce them.
+
+services:
+  postgres:
+    # PostGIS-enabled PostgreSQL. The plain postgres image would need the
+    # extension installed by hand, and CREATE EXTENSION postgis would fail.
+    image: postgis/postgis:16-3.4
+    container_name: weathergpt-postgres
+    restart: unless-stopped
+    environment:
+      # Development credentials only. Real deployments read these from the
+      # environment or a secret manager, never from this file.
+      POSTGRES_USER: ${POSTGRES_USER:-weathergpt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weathergpt}
+      POSTGRES_DB: ${POSTGRES_DB:-weathergpt}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # `docker compose up --wait` and dependent services block until this
+      # passes, so migrations never race the server's first boot.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weathergpt} -d ${POSTGRES_DB:-weathergpt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: weathergpt_postgres_data
