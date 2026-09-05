@@ -43,7 +43,7 @@ _COORDINATES = re.compile(
 #: "about" is here for the follow-up that carries a conversation forward:
 #: "What about Miyapur?" names a place and nothing else.
 _PLACED = re.compile(
-    r"\b(?:in|at|for|near|around|of|about|over)\s+(?P<place>[^?!,;.]+?)(?=\s+(?:in|at|for|near|around|of|about|over|that|and|where|which|when|is|was|will|can|could|should)\b|[?!,;.]|$)",
+    r"\b(?:in|at|for|near|around|of|about|over)\s+(?P<place>[^?!,;.]+?)(?=\s+(?:in|at|for|near|around|of|about|over|on|that|and|where|which|when|is|was|will|can|could|should)\b|[?!,;.]|$)",
     re.IGNORECASE,
 )
 # "travel to Pune" carries a place; "going to rain" does not. Only verbs that
@@ -156,6 +156,7 @@ class DetectedRequest:
     #: Hour-precision window, when the question was about a specific moment.
     start_time: datetime | None = None
     end_time: datetime | None = None
+    target_date: date | None = None
     #: Local hours of day the answer should be narrowed to, e.g. "yesterday
     #: evening" -> (17, 21).
     local_hours: tuple[int, int] | None = None
@@ -245,11 +246,13 @@ class IntentDetector:
                 location,
                 days=when.days,
                 local_hours=when.target.local_hours if when.target else None,
+                target_date=when.target.start_date if when.target else None,
                 **common,
             )
 
         if RISK_SUBJECT.search(normalized) or (
-            purpose is not AdvisoryPurpose.GENERAL and WEATHER_SUBJECT.search(normalized)
+            purpose is not AdvisoryPurpose.GENERAL
+            and (WEATHER_SUBJECT.search(normalized) or purpose is AdvisoryPurpose.OUTDOOR_EVENT)
         ):
             return DetectedRequest(Intent.LOCATION_RISK, location, days=when.days, **common)
 
@@ -273,6 +276,13 @@ class IntentDetector:
             if _is_place_only(normalized):
                 return DetectedRequest(Intent.LOCATION_SEARCH, location, **common)
 
+        # This message names no weather, no time and no place. Before treating
+        # it as unreadable, read it as what it usually is: the next thing said
+        # in a conversation that is already about somewhere.
+        continued = _continued(normalized, state, purpose)
+        if continued is not None:
+            return DetectedRequest(continued, location, days=when.days, **common)
+
         return DetectedRequest(Intent.UNKNOWN, location, days=when.days, **common)
 
 
@@ -293,6 +303,45 @@ _CARRIED_FORWARD = frozenset(
 def _carry_forward(last: Intent) -> Intent | None:
     """The question to re-ask about a newly named place, if there is one."""
     return last if last in _CARRIED_FORWARD else None
+
+
+#: Openers that hold a question open instead of starting a new one: "so?",
+#: "and then?", "what about now". They carry no subject of their own, which is
+#: precisely why a message built out of them has to inherit one.
+_CONTINUES = re.compile(
+    r"^(?:so|and|then|but|ok|okay|well|also|still|now)\b"
+    r"|\b(?:what|how)\s+about\b"
+    r"|\bthen\s*[?.!]*$",
+    re.IGNORECASE,
+)
+
+
+def _continued(
+    message: str, state: ConversationState, purpose: AdvisoryPurpose
+) -> Intent | None:
+    """The question this message is still asking, when it asks none itself.
+
+    A conversation is not a list of unrelated sentences. "So is it worth it
+    then?" and "what about now?" name no weather, no place and no time, and
+    the only honest reading of either is the question already on the table.
+
+    Both tests need the session to be somewhere first. On the opening message
+    there is nothing to continue, and the capability answer is the right one —
+    which is also what keeps a genuine change of subject out of here.
+    """
+    if state.location is None:
+        return None
+
+    # An activity named on its own is a planning question about doing it here:
+    # "so is it worth fishing then" is asking about the water, not the word.
+    # `_purpose` reads only this message, so an activity mentioned three turns
+    # ago cannot pull an unrelated sentence into a risk answer.
+    if purpose is not AdvisoryPurpose.GENERAL:
+        return Intent.LOCATION_RISK
+
+    if _CONTINUES.search(message):
+        return _carry_forward(state.last_intent)
+    return None
 
 
 def _past_window(when: TemporalPlan) -> dict[str, object]:
@@ -365,6 +414,17 @@ def _location(message: str, state: ConversationState) -> LocationInput | None:
 
 def _clean_place(value: str) -> str:
     """Reduce a captured phrase to the place inside it, or to nothing."""
+    # A place does not take an indefinite article. "for a drive", "for a walk",
+    # "in an hour" are activities and durations wearing the same preposition
+    # that carries "for Mumbai", and the anchor cannot tell them apart on its
+    # own. This is grammar rather than a word list, so it also holds for the
+    # phrases nobody thought to enumerate.
+    #
+    # Deliberately case-sensitive: "a" and "an" open no English place name, but
+    # "A" opens A Coruña and "An" opens An Giang. Lowercase is the article;
+    # capitalised is the name.
+    if re.match(r"\s*(?:a|an)\s+\S", value):
+        return ""
     candidate = re.sub(
         r"\b(?:today|tomorrow|tonight|this afternoon|this evening|next week|"
         r"this week|(?:this |next )?weekend|hourly|forecast|weather|alerts?|warnings?|risk|"
@@ -392,8 +452,13 @@ def _clean_place(value: str) -> str:
     candidate = _innermost(candidate)
 
     # Drop leading words that are not part of the name: "kal Delhi" -> "Delhi".
+    # A capitalised "A" or "An" is exempt: the guard at the top of this function
+    # already let it through as a proper noun, and popping it here would undo
+    # that and hand the gazetteer "Coruña" and "Giang".
     tokens = candidate.split()
     while len(tokens) > 1 and tokens[0].casefold() in _NON_PLACE:
+        if tokens[0] in {"A", "An"}:
+            break
         tokens.pop(0)
     while tokens and tokens[-1].casefold() in _NON_PLACE:
         tokens.pop()
@@ -409,7 +474,24 @@ def _clean_place(value: str) -> str:
     # A quantity is never a place.
     if candidate[0].isdigit():
         return ""
+    # A word the vocabulary already reads as an activity is not a place. That
+    # list is PURPOSE_TERMS — it exists to recognise "driving", "fishing" and
+    # "harvest" as what someone is doing, and the same knowledge says they are
+    # not where. Only a candidate made *entirely* of those words is rejected,
+    # so "Port Blair" keeps its Port and "Sea Lake" keeps its Sea.
+    if _is_activity(candidate):
+        return ""
     return candidate[:200]
+
+
+def _is_activity(candidate: str) -> bool:
+    """True when every word of ``candidate`` names an activity, not a place."""
+    words = [word for word in re.split(r"[\s\-]+", candidate) if word]
+    if not words:
+        return False
+    return all(
+        any(term.search(word) for term in PURPOSE_TERMS.values()) for word in words
+    )
 
 
 def _innermost(place: str) -> str:
@@ -431,6 +513,26 @@ def _innermost(place: str) -> str:
         place = inner
 
 
+#: Openings that are talk, not a question about anywhere. `_NON_PLACE` guards
+#: the words a *capture* can land on; this guards a whole short message that
+#: would otherwise be read as a bare name — "hello" was being sent to the
+#: gazetteer, which answered "I could not find a location matching 'hello'".
+#:
+#: Kept deliberately narrow. Every entry is an interjection or a courtesy that
+#: is not also a place, which is why "nice", "good", "great" and "sure" are
+#: absent: Nice is in France, Sure is in Belgium, and a blocklist that swallows
+#: real names is worse than the greeting it was meant to catch.
+_NOT_A_QUESTION = frozenset(
+    {
+        "hi", "hello", "hey", "hiya", "yo", "greetings", "howdy",
+        "thanks", "thankyou", "cheers", "bye", "goodbye", "welcome",
+        "sorry", "oops", "yeah", "yep", "nope", "nah", "hmm", "huh",
+        "namaste", "namaskar", "dhanyavad", "shukriya",
+        "नमस्ते", "नमस्कार", "धन्यवाद", "शुक्रिया",
+    }
+)
+
+
 def _is_place_only(message: str) -> bool:
     """True when the whole message is a bare place name.
 
@@ -438,11 +540,16 @@ def _is_place_only(message: str) -> bool:
     answering it with "which location did you mean?" is the right response.
     """
     words = message.strip(" ?!.,").split()
+    # Same exemption as `_clean_place`: a capitalised article opens a name.
+    if len(words) > 1 and words[0] in {"A", "An"}:
+        words = words[1:]
     if not (1 <= len(words) <= 4):
         return False
     if WEATHER_SUBJECT.search(message) or ALERT_SUBJECT.search(message):
         return False
     if any(term.search(message) for term in VARIABLES.values()):
+        return False
+    if any(word.strip(" ?!.,").casefold() in _NOT_A_QUESTION for word in words):
         return False
     return not any(word.casefold() in _NON_PLACE for word in words)
 

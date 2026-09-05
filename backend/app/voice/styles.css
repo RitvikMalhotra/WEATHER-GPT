@@ -54,11 +54,19 @@
   --shadow-raise: 0 1px 2px rgba(14, 23, 32, 0.05), 0 6px 20px -8px rgba(14, 23, 32, 0.16);
   --shadow-float: 0 2px 4px rgba(14, 23, 32, 0.06), 0 18px 44px -16px rgba(14, 23, 32, 0.26);
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --dur-1: 140ms;
+  /* Curves. The browser keywords are too weak to read as intent at these
+     durations, so each curve here is authored and each has one job. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* entering, exiting */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* moving across the screen */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);          /* surfaces that slide */
+
+  --dur-0: 120ms;   /* press and hover: felt, not watched */
+  --dur-1: 160ms;
   --dur-2: 220ms;
-  --dur-3: 320ms;
+  --dur-3: 300ms;
+  /* The air runs on its own clock. Weather does not change in a fifth of a
+     second, and the ground layer should never feel like a UI transition. */
+  --dur-sky: 900ms;
 
   --font: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans Devanagari", sans-serif;
@@ -67,8 +75,10 @@
   --shell: var(--column);
 }
 
+/* Reduced motion is fewer and gentler, not none: a state change still fades so
+   it stays legible, but nothing travels, drifts or loops. */
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 1ms; --dur-2: 1ms; --dur-3: 1ms; }
+  :root { --dur-0: 1ms; --dur-1: 100ms; --dur-2: 120ms; --dur-3: 140ms; --dur-sky: 220ms; }
 }
 
 /* Sky states. Only the ground and the graticule move; ink never does. */
@@ -135,13 +145,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: fixed;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
   background: linear-gradient(180deg, var(--air-top) 0%, var(--air-mid) 46%, var(--air-surface) 100%);
-  transition: background var(--dur-3) linear;
+  /* A sky does not cut between states; it turns over. */
+  transition: background var(--dur-sky) var(--ease-in-out);
 }
 
 /* The skew-T graticule: isobars level, dry adiabats skewed. It is a measuring
-   grid drawn as one, and held under 6% so it never competes with the column. */
+   grid drawn as one, and held under 6% so it never competes with the column.
+   It is the one layer that never moves — a grid that drifts is not a grid. */
 .sky::before {
   content: "";
   position: absolute;
@@ -151,38 +164,92 @@ button, input, textarea, select { font: inherit; color: inherit; }
     repeating-linear-gradient(45deg, var(--graticule) 0 1px, transparent 1px 96px);
   -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.35) 42%, transparent 78%);
   mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.35) 42%, transparent 78%);
+  transition: background-image var(--dur-sky) var(--ease-in-out);
 }
 
-/* Precipitation: one drifting hairline layer, never a particle system. */
-.sky::after {
-  content: "";
+/* The light in the column. One soft body of luminance over the upper air,
+   moving on a scale a person registers only by looking away and back. It is
+   white and parcel blue at trace strength — the palette, nothing new. */
+.sky__glow {
   position: absolute;
-  inset: -20% -12%;
+  inset: -28% -18% auto -18%;
+  height: 92%;
+  background:
+    radial-gradient(46% 58% at 68% 16%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 68%),
+    radial-gradient(40% 48% at 20% 4%, rgba(29, 99, 230, 0.07), rgba(29, 99, 230, 0) 72%);
+  will-change: transform;
+  animation: breathe 54s var(--ease-in-out) infinite alternate;
+  transition: opacity var(--dur-sky) var(--ease-in-out);
+}
+:root[data-sky="storm"] .sky__glow { opacity: 0.34; }
+:root[data-sky="fog"]   .sky__glow { opacity: 0.45; }
+:root[data-sky="night"] .sky__glow { opacity: 0.55; }
+
+@keyframes breathe {
+  from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.075); }
+}
+
+/* Precipitation: hairline sheets, never a particle system. Two of them, at
+   different rates, so the fall reads as depth rather than as one moving
+   texture — the far sheet on the element, the near sheet on its ::after. */
+.sky__veil {
+  position: absolute;
+  inset: -24% -14%;
   opacity: 0;
-  background-image: repeating-linear-gradient(100deg, rgba(29, 99, 230, 0.13) 0 1px, transparent 1px 9px);
+  background-image: repeating-linear-gradient(100deg, rgba(29, 99, 230, 0.12) 0 1px, transparent 1px 11px);
   -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
   mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
-  transition: opacity var(--dur-3) linear;
+  will-change: transform;
+  transition: opacity var(--dur-sky) var(--ease-in-out);
 }
-:root[data-sky="rain"] .sky::after,
-:root[data-sky="storm"] .sky::after {
-  opacity: 1;
-  animation: drift 2.4s linear infinite;
+.sky__veil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(97deg, rgba(29, 99, 230, 0.09) 0 1px, transparent 1px 26px);
 }
-:root[data-sky="storm"] .sky::after { animation-duration: 1.5s; }
-:root[data-sky="snow"] .sky::after {
+
+:root[data-sky="rain"]  .sky__veil { opacity: 1; animation: drift 2.4s linear infinite; }
+:root[data-sky="rain"]  .sky__veil::after { animation: drift 1.55s linear infinite; }
+:root[data-sky="storm"] .sky__veil { opacity: 1; animation: drift 1.5s linear infinite; }
+:root[data-sky="storm"] .sky__veil::after { animation: drift 0.95s linear infinite; }
+
+:root[data-sky="snow"] .sky__veil {
   opacity: 0.7;
   background-image: repeating-linear-gradient(115deg, rgba(70, 100, 140, 0.1) 0 2px, transparent 2px 22px);
   animation: drift 9s linear infinite;
 }
+:root[data-sky="snow"] .sky__veil::after {
+  background-image: repeating-linear-gradient(112deg, rgba(70, 100, 140, 0.07) 0 2px, transparent 2px 44px);
+  animation: drift 5.4s linear infinite;
+}
+
+/* Fog is not a fall. It is a band of white lying across the column, rolling
+   the width of a slow breath. */
+:root[data-sky="fog"] .sky__veil {
+  opacity: 0.9;
+  inset: 8% -16% auto -16%;
+  height: 58%;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.62) 52%, rgba(255, 255, 255, 0) 100%);
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: roll 28s var(--ease-in-out) infinite alternate;
+}
+:root[data-sky="fog"] .sky__veil::after { content: none; }
 
 @keyframes drift {
   from { transform: translate3d(0, -12%, 0); }
   to   { transform: translate3d(-9%, 12%, 0); }
 }
 
+@keyframes roll {
+  from { transform: translate3d(-7%, -2%, 0); }
+  to   { transform: translate3d(7%, 2%, 0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .sky::after { animation: none !important; }
+  .sky__veil, .sky__veil::after, .sky__glow { animation: none !important; }
 }
 
 /* ----------------------------------------------------------------- the app */
@@ -213,6 +280,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.42));
   backdrop-filter: saturate(1.4) blur(14px);
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  transition: background var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+
+/* Once the column has moved under it, the masthead thickens and casts — the
+   only signal that there is conversation above the fold. */
+:root[data-scrolled="true"] .masthead {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.64));
+  border-bottom-color: var(--line-strong);
+  box-shadow: 0 10px 26px -22px rgba(14, 23, 32, 0.9);
 }
 
 /* The graticule is legible only here, at the top of the column. */
@@ -287,11 +364,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
-    color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+    color var(--dur-1) var(--ease), transform var(--dur-0) var(--ease-out), box-shadow var(--dur-1) var(--ease);
 }
 .btn svg { width: 17px; height: 17px; flex: none; }
 .btn:hover:not(:disabled) { background: var(--surface-quiet); border-color: rgba(14, 23, 32, 0.28); }
-.btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: 0.44; cursor: not-allowed; }
 
 .btn--primary {
@@ -321,7 +397,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   letter-spacing: -0.006em;
   cursor: pointer;
   max-width: 330px;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease), transform var(--dur-0) var(--ease-out);
 }
 .pill:hover { background: #fff; border-color: rgba(14, 23, 32, 0.3); }
 .pill[aria-expanded="true"] { background: #fff; border-color: var(--parcel); box-shadow: 0 0 0 3px var(--parcel-soft); }
@@ -330,6 +407,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .pill__chevron { width: 14px; height: 14px; transition: transform var(--dur-2) var(--ease); }
 .pill[aria-expanded="true"] .pill__chevron { transform: rotate(180deg); }
 .pill--place > svg:first-child { color: var(--parcel); }
+
+/* Lift is a hover affordance, so it exists only where a hover is real. Press
+   is the reply to a touch and belongs everywhere; it wins by coming last. */
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .pill:hover { transform: translateY(-1px); }
+  .chip:hover:not(:disabled) { transform: translateY(-1px); }
+  .candidate:hover { transform: translateY(-1px); }
+}
+.btn:active:not(:disabled) { transform: scale(0.972); }
+.pill:active { transform: scale(0.978); }
+.chip:active:not(:disabled) { transform: scale(0.96); }
+.icon-btn:active:not(:disabled) { transform: scale(0.92); }
 
 /* ---------------------------------------------------------------- popovers */
 
@@ -346,15 +436,56 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-float);
+  /* Anchored to its trigger, so it grows out of the trigger, not out of
+     nowhere. Modals would be the exception; there are none here. */
   transform-origin: top right;
   animation: pop var(--dur-2) var(--ease-out) both;
 }
 .popover[hidden] { display: none; }
 
+/* It leaves the way it came: same origin, same path, shorter — a dismissal
+   should never take as long as a decision. */
+.popover[data-closing="true"] {
+  animation: unpop var(--dur-1) var(--ease-out) both;
+  pointer-events: none;
+}
+
 @keyframes pop {
-  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: none; }
 }
+
+@keyframes unpop {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-4px) scale(0.985); }
+}
+
+/* A control sitting at the foot of the page has no room below it, so its menu
+   opens upward — and grows from the edge it is anchored to, like every other
+   popover here. Doubled class so the 760px rules, which re-anchor the header
+   popovers to the left, cannot flip this one's origin back to the top. */
+.popover.popover--up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  transform-origin: bottom left;
+  animation-name: pop-up;
+}
+.popover.popover--up[data-closing="true"] { animation-name: unpop-up; }
+
+@keyframes pop-up {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes unpop-up {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(4px) scale(0.985); }
+}
+
+/* Six short readings need no more width than the longest of them. */
+.popover--rate { min-width: 178px; }
 
 .menu__option {
   display: flex;
@@ -429,7 +560,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* A column that fills from the bottom: an opening screen sits in the middle of
    the air, and a short conversation rests just above the composer instead of
    hanging from the masthead. */
-.thread-wrap { overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; min-width: 0; }
+.thread-wrap {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* The column dissolves into the masthead rather than being cut by its edge,
+     so scrolling reads as air moving past rather than as a clipped list. */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+}
 .thread-wrap > * { flex: none; }
 
 .thread {
@@ -443,12 +584,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   gap: 22px;
 }
 
-.turn { display: flex; animation: rise var(--dur-3) var(--ease-out) both; }
-.turn--user { justify-content: flex-end; }
-.turn--agent { justify-content: flex-start; }
+/* A turn rises into the column from its own side, so the left/right language
+   of the notches is already stated by the time the text is read. */
+.turn { display: flex; }
+.turn--user { justify-content: flex-end; animation: rise-user var(--dur-3) var(--ease-out) both; }
+.turn--agent { justify-content: flex-start; animation: rise-agent var(--dur-3) var(--ease-out) both; }
 
-@keyframes rise {
-  from { opacity: 0; transform: translateY(7px); }
+@keyframes rise-user {
+  from { opacity: 0; transform: translate3d(9px, 10px, 0) scale(0.986); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes rise-agent {
+  from { opacity: 0; transform: translate3d(-9px, 10px, 0) scale(0.986); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -504,6 +652,21 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .card__body { padding: 15px 18px; }
 .card__body > * + * { margin-top: 12px; }
 
+/* An answer settles in reading order — the sentence, then the reading, then
+   what was measured — instead of the whole card arriving at once. */
+.card__body > * {
+  animation: latch var(--dur-3) var(--ease-out) both;
+  animation-delay: 60ms;
+}
+.card__body > *:nth-child(2) { animation-delay: 105ms; }
+.card__body > *:nth-child(3) { animation-delay: 150ms; }
+.card__body > *:nth-child(n+4) { animation-delay: 195ms; }
+
+/* A grid and a ruled table do not latch as a block. Their cells and rows do,
+   one clock further down, so the container must stay out of the way. */
+.card__body > .metrics,
+.card__body > .rows { animation: none; }
+
 .lede { font-size: 15px; letter-spacing: -0.008em; color: var(--ink); overflow-wrap: anywhere; }
 .prose { white-space: pre-wrap; font-size: 14.5px; color: var(--ink-2); letter-spacing: -0.004em; overflow-wrap: anywhere; }
 
@@ -543,7 +706,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--line);
   animation: latch var(--dur-3) var(--ease-out) both;
-  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
+  animation-delay: calc(var(--i, 0) * 45ms + 150ms);
 }
 .metric__label {
   display: -webkit-box;
@@ -569,8 +732,23 @@ button, input, textarea, select { font: inherit; color: inherit; }
   to   { opacity: 1; transform: none; }
 }
 
+/* The reduced-motion stand-in for every entrance in the file: the change is
+   still announced, nothing crosses the screen to announce it. */
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* Forecast rows: the sounding's own ruled table. */
 .rows { border-top: 1px solid var(--line); }
+
+/* Rows land down the table on the same clock as the metric cells, so the
+   forecast reads as a column filling rather than a block appearing. */
+.rows .row {
+  animation: latch var(--dur-3) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 34ms + 150ms);
+}
+
 .row {
   display: grid;
   grid-template-columns: 112px 20px minmax(0, 1fr) auto;
@@ -839,7 +1017,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease), transform var(--dur-0) var(--ease-out);
 }
 .candidate svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
 .candidate:hover { background: var(--parcel-soft); border-color: var(--parcel-soft-line); }
@@ -881,12 +1060,26 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @keyframes sweep { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .working__bars i, .skeleton i, .metric { animation: none; }
+  .working__bars i, .skeleton i { animation: none; }
+  /* The staggered latches keep their fade and lose their travel. */
+  .metric, .rows .row, .card__body > *,
+  .turn--user, .turn--agent { animation-name: fade; }
   .metric { opacity: 1; }
 }
 
 /* Opening state: teaches the column instead of apologising for being empty. */
+/* The empty column introduces itself line by line, once per session. This is
+   the only place in the file with a delight budget. */
 .opening { width: 100%; max-width: var(--column); margin: auto; padding: 46px 32px 12px; }
+.opening > *, .opening__fact {
+  animation: latch var(--dur-3) var(--ease-out) both;
+}
+.opening__title  { animation-delay: 40ms; }
+.opening__body   { animation-delay: 120ms; }
+.opening__facts  { animation: none; }
+.opening__fact:nth-child(1) { animation-delay: 200ms; }
+.opening__fact:nth-child(2) { animation-delay: 250ms; }
+.opening__fact:nth-child(3) { animation-delay: 300ms; }
 .opening__title {
   font-size: 30px;
   font-weight: 620;
@@ -924,7 +1117,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--ink-2);
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease), transform var(--dur-0) var(--ease-out);
 }
 .chip:hover:not(:disabled) { background: #fff; border-color: var(--parcel); color: var(--parcel); }
 .chip:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -938,9 +1132,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-raise);
-  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out);
 }
-.composer:focus-within { border-color: var(--parcel); box-shadow: 0 0 0 3px var(--parcel-soft), var(--shadow-raise); }
+/* Focus lifts the composer off the dock by a hair — the whole surface answers,
+   not just its border. */
+.composer:focus-within {
+  border-color: var(--parcel);
+  box-shadow: 0 0 0 3px var(--parcel-soft), var(--shadow-float);
+  transform: translateY(-1px);
+}
 
 .composer__input {
   flex: 1;
@@ -972,7 +1173,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: none;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+    transform var(--dur-0) var(--ease-out);
 }
 .icon-btn svg { width: 19px; height: 19px; }
 .icon-btn:hover:not(:disabled) { background: var(--surface-sunk); color: var(--ink); }
@@ -985,6 +1187,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .voicebar { display: flex; align-items: center; gap: 10px; margin-top: 11px; flex-wrap: wrap; }
 .voicebar__group { display: flex; align-items: center; gap: 8px; }
 .voicebar .btn { height: 38px; min-width: 106px; }
+
+/* The speaking speed sits with the controls it governs, at their height. It is
+   a readout that opens something — a pill — not a fourth action competing with
+   Speak. */
+.voicebar .pill { height: 38px; flex: 0 0 auto; max-width: none; }
+.pill--rate { padding-inline: 10px; gap: 6px; }
+.pill--rate .pill__text { font-variant-numeric: tabular-nums; min-width: 34px; }
+.pill--rate > svg:first-child { color: var(--ink-3); }
+.menu__option--rate .menu__label { font-variant-numeric: tabular-nums; }
 
 #speak[data-listening="true"] {
   background: var(--stop);
@@ -1007,7 +1218,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   70%  { opacity: 0;    transform: scale(1.09); }
   100% { opacity: 0;    transform: scale(1.09); }
 }
-@media (prefers-reduced-motion: reduce) { .pulse::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .pulse::after { animation: none; opacity: 0.55; }
+  /* Hover lift and press scale are position changes; the colour change stays. */
+  .btn, .pill, .chip, .candidate, .icon-btn, .composer:focus-within { transform: none !important; }
+}
 
 .status {
   flex: 1;
@@ -1020,6 +1235,138 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .status[data-tone="error"] { color: var(--stop); }
 .status[data-tone="warn"] { color: var(--warn); }
 .status[data-tone="ok"] { color: var(--ok); }
+
+/* -------------------------------------------------------------- ignition */
+
+/* The one time the instrument announces itself: the wordmark stands in the
+   middle of the column, a hairline is ruled under it, and then the card
+   ascends as the application rises into the space it leaves.
+ *
+ * The timeline is the stylesheet's, not the script's. This plays at the exact
+ * moment the client is busiest booting, and a CSS animation runs off the main
+ * thread while a script-driven one drops frames — and it clears itself even if
+ * app.js never runs, so a broken script can never leave the page behind a
+ * curtain. The script adds one thing CSS cannot: handing the mark to its seat
+ * in the masthead by measurement rather than by guess.
+ *
+ * Timings are shared with IGNITION in app.js. Move one, move both. */
+.ignition {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  /* It never takes a click; the skip listener is on the document. */
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.97));
+  backdrop-filter: saturate(1.1) blur(2px);
+  -webkit-backdrop-filter: saturate(1.1) blur(2px);
+  animation: ignition-clear 320ms var(--ease-out) 1000ms both;
+}
+
+.ignition__stack { display: grid; justify-items: center; gap: 20px; }
+
+.ignition__mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 19px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(160deg, #2f7bff, #1145b4 72%);
+  box-shadow: 0 2px 6px rgba(11, 45, 110, 0.3), 0 18px 40px -14px rgba(17, 69, 180, 0.8);
+  /* Two animations: the arrival, then a fast exit at the handoff, so the mark
+     is never on screen twice while the masthead's copy flies into place. */
+  animation:
+    ignition-mark 620ms var(--ease-out) both,
+    ignition-mark-out 150ms linear 1000ms both;
+}
+.ignition__mark svg { width: 38px; height: 38px; }
+
+/* Set as letters so the title assembles rather than appears. Tracking is
+   trailing on the last letter, so the word is nudged back onto centre. */
+.ignition__word {
+  display: flex;
+  margin-right: -0.16em;
+  font-size: 46px;
+  font-weight: 640;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: var(--ink);
+}
+.ignition__word span {
+  animation: ignition-letter 520ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 34ms + 130ms);
+}
+
+/* The hairline the column is measured against, drawn under the title. */
+.ignition__rule {
+  width: 232px;
+  height: 1px;
+  background: var(--line-strong);
+  animation: ignition-rule 620ms var(--ease-out) 300ms both;
+}
+
+@keyframes ignition-mark {
+  from { opacity: 0; transform: translateY(10px) scale(0.86); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes ignition-mark-out {
+  to { opacity: 0; }
+}
+
+@keyframes ignition-letter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes ignition-rule {
+  from { opacity: 0; transform: scaleX(0); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes ignition-clear {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-26px) scale(1.03); }
+}
+
+/* The application rises into the column as the card leaves it — the two are
+   one movement, which is why they overlap rather than queue. */
+.app { animation: ignition-reveal 520ms var(--ease-out) 960ms both; }
+
+@keyframes ignition-reveal {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Any deliberate input ends it. An introduction that cannot be interrupted is
+   an obstacle. */
+:root[data-ignited="true"] .ignition { animation: fade 140ms linear reverse both; }
+:root[data-ignited="true"] .app { animation: none; }
+
+@media (max-width: 760px) {
+  .ignition__mark { width: 54px; height: 54px; border-radius: 16px; }
+  .ignition__mark svg { width: 32px; height: 32px; }
+  .ignition__word { font-size: 30px; letter-spacing: 0.13em; margin-right: -0.13em; }
+  .ignition__rule { width: 168px; }
+}
+
+@media (max-width: 430px) {
+  .ignition__word { font-size: 23px; letter-spacing: 0.1em; margin-right: -0.1em; }
+  .ignition__rule { width: 132px; }
+}
+
+/* Reduced motion keeps the announcement and drops the choreography: the card
+   is shown and crossfaded out, and nothing travels. */
+@media (prefers-reduced-motion: reduce) {
+  .ignition { animation: fade 220ms linear 420ms reverse both; }
+  .ignition__mark, .ignition__word span, .ignition__rule {
+    animation: fade 160ms linear both;
+  }
+  .app { animation: fade 240ms linear 420ms both; }
+}
 
 /* ------------------------------------------------------------ responsive */
 

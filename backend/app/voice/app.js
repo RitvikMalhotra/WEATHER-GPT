@@ -20,6 +20,14 @@
   const STORE_PLACE = "weathergpt.place";
   const STORE_LANG = "weathergpt.lang";
   const STORE_CLIENT = "weathergpt.client";
+  const STORE_RATE = "weathergpt.rate";
+
+  /* Speaking speeds. Below 1 for a place name or a figure worth catching, above
+     it for a long forecast already half known. The spec allows 0.1–10, but the
+     useful range is much narrower: under 0.25 most engines slur, and above 3
+     the words run together on every device tested. */
+  const RATES = [0.25, 0.5, 0.75, 1, 2, 3];
+  const DEFAULT_RATE = 1;
 
   /* Offered only where the whole path works: the backend renders answers from
      an English or Hindi catalog, and the browser recognises and speaks both.
@@ -174,6 +182,7 @@
     placeInput: $("placeInput"), placeResults: $("placeResults"), placeHint: $("placeHint"),
     useLocation: $("useLocation"),
     langButton: $("langButton"), langLabel: $("langLabel"), langMenu: $("langMenu"),
+    rateButton: $("rateButton"), rateLabel: $("rateLabel"), rateMenu: $("rateMenu"),
     alertsButton: $("alertsButton"), alertsPanel: $("alertsPanel"), alertsCount: $("alertsCount"),
     watchInput: $("watchInput"), watchResults: $("watchResults"), watchHint: $("watchHint"),
     watchList: $("watchList"), watchConfirm: $("watchConfirm"),
@@ -189,6 +198,7 @@
     lastSpoken: "",
     listening: false,
     micMode: "ask",
+    rate: DEFAULT_RATE,   // how fast the answer is read back
   };
 
   const t = () => UI[state.language.base] || UI.en;
@@ -308,19 +318,34 @@
     el.status.textContent = message || "";
   }
 
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
   function scrollToLatest() {
     el.threadWrap.scrollTo({
       top: el.threadWrap.scrollHeight,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      behavior: reducedMotion.matches ? "auto" : "smooth",
     });
+  }
+
+  /* The masthead only thickens once there is conversation above the fold. One
+     attribute on the root; the transition itself is the stylesheet's. */
+  function trackScroll() {
+    const scrolled = el.threadWrap.scrollTop > 4;
+    document.documentElement.dataset.scrolled = scrolled ? "true" : "false";
   }
 
   function addTurn(side, node) {
     if (el.opening) { el.opening.remove(); el.opening = null; }
     const item = make("li", `turn turn--${side}`);
     item.appendChild(node);
+    // Ruled tables latch row by row, on the same clock as the metric cells.
+    const rows = item.querySelectorAll(".rows .row");
+    for (let index = 0; index < rows.length; index += 1) {
+      rows[index].style.setProperty("--i", String(index));
+    }
     el.thread.appendChild(item);
     scrollToLatest();
+    trackScroll();
     return item;
   }
 
@@ -1029,26 +1054,44 @@
 
   const openPopovers = new Set();
 
+  /* Must match the .popover[data-closing] duration in the stylesheet. */
+  const POPOVER_EXIT_MS = 160;
+  const closing = new WeakMap();
+
+  /* A panel leaves along the path it arrived on rather than being cut, so it
+     stays out of the flow only once it is no longer on screen. */
   function closePopover(button, panel) {
-    panel.hidden = true;
-    button.setAttribute("aria-expanded", "false");
+    if (button) button.setAttribute("aria-expanded", "false");
     openPopovers.delete(panel);
+    if (panel.hidden) return;
+    if (reducedMotion.matches) { panel.hidden = true; return; }
+    panel.dataset.closing = "true";
+    window.clearTimeout(closing.get(panel));
+    closing.set(panel, window.setTimeout(() => {
+      panel.hidden = true;
+      delete panel.dataset.closing;
+      closing.delete(panel);
+    }, POPOVER_EXIT_MS));
   }
 
   function openPopover(button, panel) {
     for (const other of [...openPopovers]) {
-      other.hidden = true;
       const owner = document.querySelector(`[aria-controls="${other.id}"]`);
-      if (owner) owner.setAttribute("aria-expanded", "false");
-      openPopovers.delete(other);
+      closePopover(owner, other);
     }
+    // Reopening mid-exit cancels the exit and replays the entrance.
+    window.clearTimeout(closing.get(panel));
+    closing.delete(panel);
+    delete panel.dataset.closing;
+    panel.hidden = true;
+    void panel.offsetWidth;
     panel.hidden = false;
     button.setAttribute("aria-expanded", "true");
     openPopovers.add(panel);
   }
 
   function togglePopover(button, panel) {
-    if (panel.hidden) openPopover(button, panel);
+    if (panel.hidden || panel.dataset.closing) openPopover(button, panel);
     else closePopover(button, panel);
   }
 
@@ -1151,6 +1194,80 @@
       openPopover(el.langButton, el.langMenu);
       const first = el.langMenu.querySelector(".menu__option");
       if (first) first.focus();
+    }
+  });
+
+  /* -------------------------------------------------------- speaking speed */
+
+  /* The rate is a property of the utterance, fixed when it starts: setting it
+     on one already being spoken does nothing. So changing the speed mid-answer
+     speaks the answer again from the top at the new speed, which is also the
+     only way to hear what the new speed sounds like. */
+
+  const rateText = (value) => `${value}×`;
+
+  function renderRateMenu() {
+    el.rateMenu.textContent = "";
+    for (const rate of RATES) {
+      const option = make("button", "menu__option menu__option--rate");
+      option.type = "button";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(rate === state.rate));
+      option.dataset.rate = String(rate);
+      option.appendChild(icon("ic-check", "menu__check"));
+
+      const label = make("span", "menu__label");
+      label.appendChild(document.createTextNode(rateText(rate)));
+      if (rate === DEFAULT_RATE) {
+        label.appendChild(make("span", "menu__note", "Normal speed"));
+      }
+      option.appendChild(label);
+      option.addEventListener("click", () => {
+        selectRate(rate);
+        closePopover(el.rateButton, el.rateMenu);
+        el.rateButton.focus();
+      });
+      el.rateMenu.appendChild(option);
+    }
+    el.rateMenu.appendChild(make("p", "menu__footnote",
+      "Applies to the voice reading answers back. Some device voices flatten the fastest settings."));
+  }
+
+  function selectRate(value) {
+    const rate = RATES.includes(value) ? value : DEFAULT_RATE;
+    const changed = rate !== state.rate;
+    state.rate = rate;
+    el.rateLabel.textContent = rateText(rate);
+    el.rateButton.setAttribute("aria-label", `Speaking speed: ${rateText(rate)}`);
+    remember(STORE_RATE, rate);
+    renderRateMenu();
+    // Only re-speak for a change the person just made, and only while there is
+    // something being spoken to change.
+    if (changed && window.speechSynthesis && window.speechSynthesis.speaking && state.lastSpoken) {
+      speak(state.lastSpoken, state.language.tag);
+    }
+  }
+
+  el.rateButton.addEventListener("click", () => togglePopover(el.rateButton, el.rateMenu));
+  el.rateMenu.addEventListener("keydown", (event) => {
+    const options = [...el.rateMenu.querySelectorAll(".menu__option")];
+    const current = options.indexOf(document.activeElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = event.key === "ArrowDown"
+        ? (current + 1) % options.length
+        : (current - 1 + options.length) % options.length;
+      options[next].focus();
+    }
+  });
+  el.rateButton.addEventListener("keydown", (event) => {
+    // The menu is above the button, so Up opens it and lands on the last item.
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      openPopover(el.rateButton, el.rateMenu);
+      const options = [...el.rateMenu.querySelectorAll(".menu__option")];
+      const target = event.key === "ArrowUp" ? options[options.length - 1] : options[0];
+      if (target) target.focus();
     }
   });
 
@@ -1375,6 +1492,20 @@
     return (cut === -1 ? answer : answer.slice(0, cut)).trim();
   }
 
+  /* Which utterance Stop currently belongs to.
+   *
+   * `cancel()` ends whatever is speaking, but that utterance's `onend` does not
+   * arrive until a tick later — by which time the replacement has already
+   * enabled Stop for itself. The outgoing utterance would then disable the
+   * button belonging to the one now speaking, and Stop sat greyed out for the
+   * whole of the new answer with no way to interrupt it. Every answer speaks
+   * through this path, and changing the speaking speed mid-answer runs it
+   * twice in quick succession, so the race is the common case, not the corner.
+   *
+   * Each utterance carries the turn it was created for and only touches the
+   * button while that turn is still the current one. */
+  let speechTurn = 0;
+
   function speak(answer, responseLanguage) {
     state.lastSpoken = spokenPart(answer);
     el.replay.disabled = !state.lastSpoken;
@@ -1383,20 +1514,23 @@
       return;
     }
     try {
+      const turn = ++speechTurn;
       window.speechSynthesis.cancel();
       const tag = String(responseLanguage).includes("-")
         ? responseLanguage
         : (String(responseLanguage) === "hi" ? "hi-IN" : "en-IN");
       const utterance = new SpeechSynthesisUtterance(state.lastSpoken);
       utterance.lang = tag;
+      utterance.rate = state.rate;
       const voice = voiceFor(tag);
       if (voice) utterance.voice = voice;
       else {
         const named = LANGUAGES.find((l) => l.tag === tag) || state.language;
         say(t().noVoiceFor(named.native), "warn");
       }
-      utterance.onend = () => { el.stop.disabled = true; };
-      utterance.onerror = () => { el.stop.disabled = true; };
+      const settle = () => { if (turn === speechTurn) el.stop.disabled = true; };
+      utterance.onend = settle;
+      utterance.onerror = settle;
       el.stop.disabled = false;
       window.speechSynthesis.speak(utterance);
     } catch (error) {
@@ -1408,11 +1542,98 @@
     if (state.lastSpoken) speak(state.lastSpoken, state.language.tag);
   });
   el.stop.addEventListener("click", () => {
+    // Retiring the turn as well, so the cancelled utterance's own `onend`
+    // cannot arrive later and act on a button that has moved on.
+    speechTurn += 1;
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     el.stop.disabled = true;
   });
 
   /* ---------------------------------------------------------------- start */
+
+  /* -------------------------------------------------------------- ignition */
+
+  /* The title card's timeline belongs to the stylesheet, which plays and clears
+     it whether or not this file ever runs. Everything here is the enhancement
+     on top: handing the mark from the middle of the column to its seat in the
+     masthead — measured, so it lands rather than approximately arrives — and
+     letting any deliberate input cut the whole thing short.
+     These numbers mirror the .ignition rules in styles.css. */
+  /* The card's timeline belongs to the stylesheet, which plays and clears it
+     whether or not this file ever runs. Everything here is the enhancement on
+     top: handing the mark from the middle of the column to its seat in the
+     masthead — measured, so it lands rather than approximately arrives.
+
+     The handoff hangs off the card's own exit animation rather than a timer.
+     A timer would start whenever boot happened to finish and would drift out
+     of step with the stylesheet on a slow start, measuring the mark after it
+     had already begun to leave. This fires on the frame the exit begins, or,
+     if boot was slow enough to miss it, not at all — which costs the travel
+     and nothing else. */
+  const IGNITION_TRAVEL_MS = 560;
+
+  function ignite() {
+    const card = document.getElementById("ignition");
+    if (!card) return;
+
+    let handed = false;
+    let done = false;
+
+    /* The mark that stays is the masthead's, so that is the one that moves:
+       it is played from where the card's mark stands to where it already
+       lives. The fill is backwards, so it holds that first frame until the
+       stylesheet has faded the card's copy out from under it. */
+    function handoff() {
+      if (handed) return;
+      handed = true;
+      const source = document.getElementById("ignitionMark");
+      const target = document.querySelector(".masthead .brand__mark");
+      if (!source || !target || reducedMotion.matches || !target.animate) return;
+      const from = source.getBoundingClientRect();
+      const to = target.getBoundingClientRect();
+      if (!from.width || !to.width) return;
+      target.animate(
+        [
+          {
+            transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) `
+              + `scale(${from.width / to.width})`,
+          },
+          { transform: "none" },
+        ],
+        { duration: IGNITION_TRAVEL_MS, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "backwards" },
+      );
+    }
+
+    function end() {
+      if (done) return;
+      done = true;
+      window.clearTimeout(failsafe);
+      card.remove();
+    }
+
+    // The letters and the rule animate too, so only the card's own exit counts.
+    card.addEventListener("animationstart", (event) => {
+      if (event.target === card) handoff();
+    });
+    card.addEventListener("animationend", (event) => {
+      if (event.target === card) end();
+    });
+
+    /* Any deliberate input ends it. An introduction that cannot be interrupted
+       is an obstacle; the attribute swaps the exit for a short fade, and the
+       listeners above still do the removing. */
+    const skip = () => {
+      if (done) return;
+      document.documentElement.dataset.ignited = "true";
+      handoff();
+    };
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      document.addEventListener(type, skip, { once: true, passive: true });
+    }
+
+    // A card whose animation never runs must still never be left on screen.
+    const failsafe = window.setTimeout(end, 4000);
+  }
 
   function boot() {
     const savedLanguage = recall(STORE_LANG);
@@ -1424,9 +1645,15 @@
     else renderChips();
 
     renderLanguageMenu();
+    selectRate(Number(recall(STORE_RATE)));
     el.placeHint.textContent = t().typeMore;
     fitPlaceholder();
     updateSend();
+
+    el.threadWrap.addEventListener("scroll", trackScroll, { passive: true });
+    trackScroll();
+
+    ignite();
 
     if (!SpeechRecognitionAPI) {
       el.speak.disabled = true;
@@ -1582,11 +1809,22 @@
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     const openAlert = () => {
-      state.alertContext = {
-        ...alert,
-        location_name: alert.location_name || null,
+      const alertLocation = {
+        name: alert.location_name || null,
         admin1: alert.admin1 || null,
         country: alert.country || null,
+        timezone: alert.timezone || null,
+        coordinates: {
+          latitude: alert.latitude,
+          longitude: alert.longitude,
+        },
+      };
+      setPlace(alertLocation, { announce: true });
+      state.alertContext = {
+        ...alert,
+        location_name: alertLocation.name,
+        admin1: alertLocation.admin1,
+        country: alertLocation.country,
       };
       togglePopover(el.alertsButton, el.alertsPanel);
       ask("Explain this weather alert and what it means for me.", {

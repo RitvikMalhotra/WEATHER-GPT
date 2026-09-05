@@ -206,10 +206,19 @@ ALERT_SUBJECT = Term(
 )
 
 #: Planning questions with no explicit clock reference: "is it safe to travel?"
+#:
+#: Most of these ask about advisability without ever using the word: "is it
+#: worth going out", "is it ok to spray today", "a good time to sail?". They
+#: are the ordinary way a person asks, and a detector that reads only "safe"
+#: and "risky" sends every one of them to the fallback.
 RISK_SUBJECT = Term(
-    english=("risk", "risky", "safe", "safety", "advisable", "should i"),
-    devanagari=("जोखिम", "सुरक्षित", "खतरा"),
-    roman=("jokhim", "surakshit", "khatra"),
+    english=("risk", "risky", "safe", "safety", "advisable", "should i",
+             "worth", "worthwhile", "ok to", "okay to", "alright to",
+             "good idea", "bad idea", "good time", "bad time", "wise"),
+    devanagari=("जोखिम", "सुरक्षित", "खतरा", "ठीक रहेगा", "सही रहेगा",
+                "ठीक है क्या", "फायदा"),
+    roman=("jokhim", "surakshit", "khatra", "theek rahega", "thik rahega",
+           "sahi rahega", "faayda", "fayda"),
 )
 
 #: Contexts that change what a useful answer looks like, not what the data says.
@@ -242,6 +251,12 @@ PURPOSE_TERMS: dict[str, Term] = {
                  "flying", "drive", "driving", "commute", "road trip", "voyage"),
         devanagari=("यात्रा", "सफर", "उड़ान", "ड्राइव"),
         roman=("yatra", "safar", "udaan", "safar"),
+    ),
+    "outdoor_event": Term(
+        english=("protest", "protests", "demonstration", "demonstrations", "rally", "rallies",
+                 "event", "outdoor", "march", "marching", "gathering", "concert", "festival"),
+        devanagari=("प्रदर्शन", "धरना", "रैली", "कार्यक्रम", "सभा"),
+        roman=("pradarshan", "dharna", "rally", "karyakram", "sabha"),
     ),
 }
 

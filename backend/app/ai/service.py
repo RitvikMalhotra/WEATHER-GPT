@@ -265,8 +265,14 @@ class AIService:
         if detected.intent is Intent.ALERTS:
             return AlertsArguments(**location).model_dump(exclude_none=True)
         if detected.intent is Intent.LOCATION_RISK:
+            # The same window `_verdict_for` reads below, so the considerations
+            # and the one-line answer above them are never about different
+            # spans of time.
             return LocationRiskArguments(
-                **location, days=detected.days, purpose=detected.purpose
+                **location,
+                days=detected.days,
+                purpose=detected.purpose,
+                window_hours=detected.horizon_hours or 24,
             ).model_dump(exclude_none=True)
         raise ToolInputError("Unsupported request.")
 
@@ -413,6 +419,8 @@ async def _verdict_for(
         place=answered.display_name if answered else "",
         horizon_hours=detected.horizon_hours or 24,
         purpose=detected.purpose,
+            target_date=detected.target_date,
+            local_hours=detected.local_hours,
         active_alerts=alerts if isinstance(alerts, int) else None,
     )
     if found is None:

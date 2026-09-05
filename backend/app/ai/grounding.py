@@ -395,18 +395,23 @@ class GroundedRenderer:
     def _risk(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         risk = LocationRiskResult.model_validate(result.data)
         place = _place(risk.location.display_name, catalog)
-        lines = [f"{place}: here's what the available weather data shows."]
+        # One consideration per line, in the same ruled shape every other
+        # answer uses. Joining them with a space and stripping their full stops
+        # ran four separate facts into one unreadable sentence: "…Light drizzle
+        # The forecast reports…".
+        lines = [f"{place}:"]
         if risk.considerations:
             for item in risk.considerations:
-                lines.append(item.statement.rstrip("."))
+                lines.append(f"- {item.statement}")
         else:
-            lines.append(catalog.label("risk_none"))
+            lines.append(f"- {catalog.label('risk_none')}")
         if risk.active_alert_count:
+            record = "record" if risk.active_alert_count == 1 else "records"
             lines.append(
-                f"I also found {risk.active_alert_count} active WeatherGPT alert "
-                "record(s) for this location."
+                f"- Alerts: {risk.active_alert_count} active WeatherGPT {record} "
+                "for this location."
             )
-        return RenderedAnswer(" ".join(lines))
+        return RenderedAnswer("\n".join(lines))
 
     def _locations(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         locations = LocationSearchResponse.model_validate(result.data)

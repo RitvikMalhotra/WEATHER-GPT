@@ -79,6 +79,8 @@ def evidence(
     place: str = "",
     horizon_hours: int = 24,
     purpose: AdvisoryPurpose = AdvisoryPurpose.GENERAL,
+    target_date=None,
+    local_hours=None,
     active_alerts: int | None = None,
 ) -> brief.Brief | None:
     """The facts this answer may be built from, or nothing when there are none.
@@ -95,6 +97,8 @@ def evidence(
         data=data,
         place=place,
         window_hours=horizon_hours,
+        target_date=target_date,
+        local_hours=local_hours,
         active_alerts=active_alerts,
     )
 

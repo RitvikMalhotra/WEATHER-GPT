@@ -281,6 +281,32 @@ def _travel(brief: Brief, language: str, formatter) -> Recommendation:
     return Recommendation(f"{lead}: {'; '.join(parts)}." if parts else f"{lead}.", icon)
 
 
+def _outdoor_event(brief: Brief, language: str, formatter) -> Recommendation:
+    hi = _hindi(language)
+    rain = _rain_clause(brief, language, formatter)
+    wind = _wind_clause(brief, language)
+    heat = _heat_clause(brief, language)
+    peak = brief.rain_peak_pct or 0.0
+    gust = brief.gust_peak_ms if brief.gust_peak_ms is not None else (brief.wind_peak_ms or 0.0)
+    feels = brief.feels_max_c if brief.feels_max_c is not None else brief.temp_max_c
+
+    if brief.storm or peak >= RAIN_LIKELY_PCT:
+        lead = "इस समय कार्यक्रम टालना बेहतर है" if hi else "I would postpone the outdoor event"
+        icon = "⛈️" if brief.storm else "🌧️"
+    elif gust >= WIND_STRONG_MS:
+        lead = "तेज़ हवा के कारण कार्यक्रम के लिए मौसम अनुकूल नहीं है" if hi else "The weather is not suitable for the event because of strong wind"
+        icon = "💨"
+    elif feels is not None and feels >= HOT_C:
+        lead = "गर्मी के कारण कार्यक्रम में सावधानी रखें" if hi else "The event is possible, but plan for the heat"
+        icon = "🥵"
+    else:
+        lead = "कार्यक्रम के लिए मौसम अनुकूल दिखता है" if hi else "The weather looks suitable for the outdoor event"
+        icon = "🌤️"
+
+    facts = "; ".join(clause for clause in (rain, wind, heat) if clause)
+    return Recommendation(f"{lead}: {facts}." if facts else f"{lead}.", icon, _missing_clause(brief, language))
+
+
 def _general(brief: Brief, language: str, formatter) -> Recommendation:
     """Leads with whatever the data says is the notable thing, not with rain."""
     hi = _hindi(language)
@@ -335,6 +361,7 @@ _WRITERS = {
     AdvisoryPurpose.MARINE: _marine,
     AdvisoryPurpose.AGRICULTURE: _agriculture,
     AdvisoryPurpose.TRAVEL: _travel,
+    AdvisoryPurpose.OUTDOOR_EVENT: _outdoor_event,
     AdvisoryPurpose.GENERAL: _general,
 }
 

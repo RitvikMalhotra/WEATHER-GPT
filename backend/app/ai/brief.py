@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Iterable, Sequence
 
 from app.ai.models import AdvisoryPurpose, Intent
@@ -42,6 +42,7 @@ _RELEVANT: dict[AdvisoryPurpose, tuple[str, ...]] = {
     AdvisoryPurpose.MARINE: ("wind", "precipitation", "wave height", "sea state"),
     AdvisoryPurpose.AGRICULTURE: ("precipitation", "wind", "temperature"),
     AdvisoryPurpose.TRAVEL: ("precipitation", "wind", "visibility"),
+    AdvisoryPurpose.OUTDOOR_EVENT: ("precipitation", "wind", "temperature"),
     AdvisoryPurpose.GENERAL: ("precipitation", "temperature"),
 }
 
@@ -251,6 +252,8 @@ def build(
     data: object,
     place: str,
     window_hours: int,
+    target_date: date | None = None,
+    local_hours: tuple[int, int] | None = None,
     active_alerts: int | None = None,
 ) -> Brief | None:
     """Reduce one backend result to the evidence a recommendation may use."""
@@ -264,8 +267,16 @@ def build(
     elif isinstance(data, Forecast):
         if data.hourly:
             points: Sequence[object] = data.hourly[: max(1, window_hours)]
+            if target_date is not None:
+                points = [
+                    point for point in points
+                    if (point.valid_at + timedelta(seconds=data.utc_offset_seconds or 0)).date() == target_date
+                    and (local_hours is None or local_hours[0] <= (point.valid_at + timedelta(seconds=data.utc_offset_seconds or 0)).hour < local_hours[1])
+                ]
         else:
             points = data.daily[: max(1, (window_hours + 23) // 24)]
+            if target_date is not None:
+                points = [point for point in points if point.date == target_date]
         if not points:
             return None
         facts = _from_points(points)

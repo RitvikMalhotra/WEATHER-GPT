@@ -66,6 +66,9 @@
   <symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.3l3.4 2"/>
   </symbol>
+  <symbol id="ic-speed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.8 17.6a9 9 0 1 1 16.4 0"/><path d="m12 17.6 4-6.4"/><circle cx="12" cy="17.6" r="1.5"/>
+  </symbol>
 
   <!-- Sky conditions, drawn in the same hand as the controls. -->
   <symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -101,7 +104,22 @@
   </symbol>
 </svg>
 
-<div class="sky" aria-hidden="true"></div>
+<!-- The ground layer: gradient, graticule, the light in the column, and one
+     precipitation veil. Every moving part of the atmosphere lives here. -->
+<div class="sky" aria-hidden="true">
+  <div class="sky__glow"></div>
+  <div class="sky__veil"></div>
+</div>
+
+<!-- The entry. Decorative and announced nowhere: the real <h1> is in the
+     masthead, so the card is hidden from assistive technology entirely. -->
+<div class="ignition" id="ignition" aria-hidden="true">
+  <div class="ignition__stack">
+    <span class="ignition__mark" id="ignitionMark"><svg><use href="#ic-mark"></use></svg></span>
+    <p class="ignition__word"><span style="--i:0">W</span><span style="--i:1">E</span><span style="--i:2">A</span><span style="--i:3">T</span><span style="--i:4">H</span><span style="--i:5">E</span><span style="--i:6">R</span><span style="--i:7">G</span><span style="--i:8">P</span><span style="--i:9">T</span></p>
+    <span class="ignition__rule"></span>
+  </div>
+</div>
 
 <div class="app">
 
@@ -242,6 +260,19 @@
           <button type="button" id="stop" class="btn btn--danger" disabled>
             <svg aria-hidden="true"><use href="#ic-stop"></use></svg><span class="btn__label">Stop</span>
           </button>
+
+          <div class="anchor">
+            <button type="button" id="rateButton" class="pill pill--rate"
+                    aria-expanded="false" aria-haspopup="listbox" aria-controls="rateMenu"
+                    aria-label="Speaking speed">
+              <svg aria-hidden="true"><use href="#ic-speed"></use></svg>
+              <span class="pill__text" id="rateLabel">1×</span>
+              <svg class="pill__chevron" aria-hidden="true"><use href="#ic-chevron"></use></svg>
+            </button>
+            <!-- The dock is at the foot of the page, so this one opens upward. -->
+            <div class="popover popover--up popover--rate" id="rateMenu" role="listbox"
+                 aria-label="Speaking speed" tabindex="-1" hidden></div>
+          </div>
         </div>
         <p class="status" id="status" role="status" aria-live="polite"></p>
       </div>

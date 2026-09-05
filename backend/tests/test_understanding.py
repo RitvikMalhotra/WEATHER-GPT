@@ -83,6 +83,28 @@ def test_a_planning_question_with_no_clock_in_it_still_composes_a_risk_view() ->
     assert detect("Is it safe to travel to Pune?").intent is Intent.LOCATION_RISK
 
 
+def test_an_outdoor_event_question_gets_an_event_advisory_context() -> None:
+    found = detect(
+        "I want to hold a protest regarding water degradation in Mangalore."
+    )
+
+    assert found.intent is Intent.LOCATION_RISK
+    assert found.purpose is AdvisoryPurpose.OUTDOOR_EVENT
+    assert found.location is not None and found.location.location == "Mangalore"
+
+
+def test_an_event_question_keeps_its_future_day_and_clock() -> None:
+    found = detect(
+        "Check whether the weather is pleasant for my protest in Mangalore on the following Thursday around 6PM."
+    )
+
+    assert found.intent is Intent.HOURLY_FORECAST
+    assert found.purpose is AdvisoryPurpose.OUTDOOR_EVENT
+    assert found.horizon_hours == 168
+    assert found.local_hours == (18, 19)
+    assert found.location is not None and found.location.location == "Mangalore"
+
+
 def test_an_hours_ago_question_carries_instants_and_a_calendar_one_carries_dates() -> None:
     hourly = detect("What was the wind speed 6 hours ago?")
     assert hourly.start_time is not None and hourly.end_time is not None
@@ -107,6 +129,70 @@ def test_a_question_with_no_place_inherits_the_conversation() -> None:
     state.location = LocationInput(location="Delhi")
 
     assert detect("Will it rain tomorrow?", state).location.location == "Delhi"
+
+
+# --------------------------------------------------------- continuing a chat
+#
+# A conversation is not a list of unrelated sentences. These are the messages
+# that carry no subject of their own, and the failure they guard against is
+# specific: answering "so is it worth fishing then?" with the list of things
+# WeatherGPT can do, while the place, the purpose and the last question are all
+# still sitting in the session.
+
+
+def continuing(message: str) -> Intent:
+    """The intent for `message` said after a question about Bhopal."""
+    state = blank_state()
+    state.location = LocationInput(location="Bhopal")
+    state.last_intent = Intent.CURRENT_WEATHER
+    return detect(message, state).intent
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        # Advisability, asked the way people actually ask it.
+        ("is it worth", Intent.LOCATION_RISK),
+        ("so is it worth fishing then", Intent.LOCATION_RISK),
+        ("is it ok to go out", Intent.LOCATION_RISK),
+        ("is it a good idea to drive", Intent.LOCATION_RISK),
+        # An activity named on its own is a planning question about doing it.
+        ("should i go fishing", Intent.LOCATION_RISK),
+        # Pure ellipsis: the last question, asked again.
+        ("what about now", Intent.CURRENT_WEATHER),
+        ("so?", Intent.CURRENT_WEATHER),
+    ],
+)
+def test_a_follow_up_that_names_no_subject_continues_the_question(
+    message: str, expected: Intent
+) -> None:
+    assert continuing(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["tell me a joke", "who built you", "sing me a song", "what can you do"],
+)
+def test_a_change_of_subject_is_not_dragged_into_a_weather_answer(message: str) -> None:
+    """Inheriting a question must not mean inheriting every sentence."""
+    assert continuing(message) is Intent.UNKNOWN
+
+
+def test_the_opening_message_has_nothing_to_continue() -> None:
+    """With no place in the session there is no question to carry forward, so
+    the fallback is the honest answer rather than a guessed one."""
+    assert detect("what about now", blank_state()).intent is Intent.UNKNOWN
+
+
+def test_an_activity_mentioned_earlier_cannot_capture_a_later_sentence() -> None:
+    """The purpose is read from this message only. A fishing question three
+    turns ago must not turn "tell me a joke" into a marine advisory."""
+    state = blank_state()
+    state.location = LocationInput(location="Bhopal")
+    state.purpose = AdvisoryPurpose.MARINE
+    state.last_intent = Intent.LOCATION_RISK
+
+    assert detect("tell me a joke", state).intent is Intent.UNKNOWN
 
 
 @pytest.mark.parametrize(
@@ -151,6 +237,57 @@ def test_a_bare_place_name_is_a_question_about_which_place() -> None:
     assert found.location is not None and found.location.location == "Miyapur"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "is it worth going for a drive",
+        "should we go for a walk",
+        "is it a good time for a picnic",
+        "worth heading out for a swim",
+    ],
+)
+def test_an_activity_never_becomes_a_place(message: str) -> None:
+    """"for a drive" carries the same preposition as "for Mumbai".
+
+    Read as a place it resolved to Drive in Vestland, Norway, and the answer
+    was about Norwegian weather under an Indian place label. The article and
+    the activity vocabulary are what tell the two apart.
+    """
+    state = blank_state()
+    state.location = LocationInput(location="Bhopal")
+
+    found = detect(message, state)
+    assert found.location is not None
+    # The question inherits the conversation's place rather than inventing one.
+    assert found.location.location == "Bhopal"
+
+
+@pytest.mark.parametrize("message", ["hello", "thanks", "Namaste", "hey"])
+def test_a_greeting_is_not_sent_to_the_gazetteer(message: str) -> None:
+    """A greeting was being geocoded, and came back "I could not find a
+    location matching 'hello'" — an error message for something that was not
+    an error."""
+    assert detect(message, blank_state()).intent is Intent.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("message", "place"),
+    [
+        # A capitalised article opens a name; a lowercase one opens a phrase.
+        ("weather in A Coruña", "A Coruña"),
+        ("weather in An Giang", "An Giang"),
+        # And the names that merely look like ordinary words survive intact.
+        ("weather in Nice", "Nice"),
+        ("weather in Port Blair", "Port Blair"),
+    ],
+)
+def test_a_name_that_reads_as_an_ordinary_word_is_still_a_name(
+    message: str, place: str
+) -> None:
+    found = detect(message)
+    assert found.location is not None and found.location.location == place
+
+
 # ------------------------------------------------------------------ ranking
 
 
@@ -180,6 +317,28 @@ def test_the_conversation_decides_which_miyapur() -> None:
 def test_an_exact_name_outranks_a_longer_one_that_merely_contains_it() -> None:
     candidates = [at("Miyapurwa", 27.8, 81.9, "Lumbini"), at("Miyapur", 17.4, 78.3, "Telangana")]
     assert rank(candidates, "Miyapur")[0].name == "Miyapur"
+
+
+def test_india_is_the_default_for_an_unqualified_repeated_place_name() -> None:
+    candidates = [
+        Location(
+            coordinates=Coordinates(latitude=-37.8, longitude=144.9),
+            name="Mangalore",
+            admin1="Victoria",
+            country="Australia",
+            population=1000000,
+        ),
+        Location(
+            coordinates=Coordinates(latitude=12.9, longitude=74.8),
+            name="Mangalore",
+            admin1="Karnataka",
+            country="India",
+            population=500000,
+        ),
+    ]
+
+    assert rank(candidates, "Mangalore")[0].country == "India"
+    assert rank(candidates, "Mangalore, Australia")[0].country == "Australia"
 
 
 def test_an_accent_does_not_hide_a_repeated_name() -> None:

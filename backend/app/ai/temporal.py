@@ -174,6 +174,14 @@ _LAST_PERIOD_DEV = re.compile(r"(?:पिछले|पिछली|बीते)
 _LAST_WEEKDAY = re.compile(
     rf"\b(?:last|past)\s+({'|'.join(_WEEKDAYS)})\b", re.IGNORECASE
 )
+_FUTURE_WEEKDAY = re.compile(
+    rf"\b(?:(?:this|next|coming|following)\s+)?({'|'.join(_WEEKDAYS)})\b",
+    re.IGNORECASE,
+)
+_CLOCK = re.compile(
+    r"\b(?:around|at|by)?\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<meridiem>a\.?m\.?|p\.?m\.?)\b",
+    re.IGNORECASE,
+)
 _EARLIER_TODAY = re.compile(
     r"\b(?:earlier\s+today|this\s+morning|earlier\s+this\s+morning|aaj\s+subah)\b",
     re.IGNORECASE,
@@ -323,6 +331,21 @@ def _forward(
     )
 
 
+def _clock_window(message: str) -> tuple[int, int] | None:
+    match = _CLOCK.search(message)
+    if match is None:
+        return None
+    hour = int(match.group("hour"))
+    meridiem = match.group("meridiem").replace(".", "").lower()
+    if not 1 <= hour <= 12:
+        return None
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+    return hour, min(hour + 1, 24)
+
+
 # ---------------------------------------------------------------- extraction
 
 
@@ -417,6 +440,26 @@ def references(message: str, *, now: datetime | None = None) -> list[TimeReferen
 
     for match in _NEXT_PERIOD_DEV.finditer(message):
         add(_forward(match.group(0), 0, 24 * (30 if "महीने" in match.group(1) else 7)), match.start())
+
+    for match in _FUTURE_WEEKDAY.finditer(message):
+        if match.group(1).lower() in {"last", "past"}:
+            continue
+        delta = (_WEEKDAYS[match.group(1).lower()] - today.weekday()) % 7 or 7
+        clock = _clock_window(message)
+        add(
+            TimeReference(
+                tense=Tense.FUTURE,
+                phrase=match.group(0),
+                position=match.start(),
+                explicit=True,
+                granularity="hour" if clock else "day",
+                local_hours=clock,
+                horizon_hours=delta * 24 + 24,
+                start_date=today + timedelta(days=delta),
+                end_date=today + timedelta(days=delta),
+            ),
+            match.start(),
+        )
 
     for match in _TOMORROW.finditer(message):
         part = match.group(1) if match.lastindex else None

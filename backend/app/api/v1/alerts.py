@@ -107,6 +107,9 @@ class AlertSummary(BaseModel):
 
     latitude: float = Field(description="Latitude the alert applies to.")
     longitude: float = Field(description="Longitude the alert applies to.")
+    location_name: str | None = Field(default=None, description="City or locality the alert applies to.")
+    admin1: str | None = Field(default=None, description="State or first-level administrative area.")
+    country: str | None = Field(default=None, description="Country the alert applies to.")
     distance_km: float = Field(
         description="Distance from the requested point; 0 for a non-spatial query."
     )
@@ -139,6 +142,9 @@ class AlertSummary(BaseModel):
             description=alert.description,
             latitude=alert.location.coordinates.latitude,
             longitude=alert.location.coordinates.longitude,
+            location_name=alert.location.name,
+            admin1=alert.location.admin1,
+            country=alert.location.country,
             distance_km=round(match.distance_m / 1000.0, 3),
             timezone=alert.location.timezone,
             triggered_at=alert.triggered_at,

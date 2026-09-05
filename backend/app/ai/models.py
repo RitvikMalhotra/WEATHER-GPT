@@ -44,6 +44,7 @@ class AdvisoryPurpose(str, Enum):
     #: that matter most (wave height, swell, sea state) are not in this
     #: system's forecast at all, which an answer has to say rather than skip.
     MARINE = "marine"
+    OUTDOOR_EVENT = "outdoor_event"
 
 
 class ToolInputModel(BaseModel):
@@ -135,6 +136,11 @@ class AlertsArguments(LocationInput):
 
 class LocationRiskArguments(ForecastArguments):
     purpose: AdvisoryPurpose = AdvisoryPurpose.GENERAL
+    #: The window the considerations are read over. It is the same window the
+    #: verdict reads, passed rather than assumed: the two are shown one above
+    #: the other, and a body reporting one hour beside a verdict reporting a
+    #: day reads as a contradiction even when both are true.
+    window_hours: int = Field(default=24, ge=1, le=168)
 
 
 class LocationSearchArguments(ToolInputModel):

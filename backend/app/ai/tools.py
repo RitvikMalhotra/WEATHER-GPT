@@ -253,10 +253,20 @@ class BackendWeatherTools:
             )
             alerts = None
 
+        # Both legs were fetched by point, so both come back unlabelled. The
+        # gazetteer already named these coordinates before the lookup, and
+        # putting that name back is what turns "23.2337,77.3585: here's what
+        # the data shows" into a sentence about Bhopal. Every other tool does
+        # this; this one was the omission.
+        current = _named(current, place)
+        forecast = _named(forecast, place)
+
         risk = LocationRiskResult(
             purpose=args.purpose,
             location=current.location,
-            considerations=_considerations(args.purpose, current, forecast),
+            considerations=_considerations(
+                args.purpose, current, forecast, args.window_hours
+            ),
             active_alert_count=alerts.count if alerts is not None else None,
             alert_disclaimer=alerts.disclaimer if alerts is not None else None,
             current=current.model_dump(mode="json"),
@@ -334,58 +344,86 @@ def _unique_sources(tool: str, provenances: Iterable[DataProvenance]) -> list[So
 
 
 def _considerations(
-    purpose: AdvisoryPurpose, current: WeatherReport, forecast: Forecast
+    purpose: AdvisoryPurpose,
+    current: WeatherReport,
+    forecast: Forecast,
+    window_hours: int = 24,
 ) -> list[RiskConsideration]:
     """Make only conditional, factual planning observations from returned fields.
 
     No severity bands, thresholds, warning states, or safety claims are created
     here.  Those belong to the backend Alert Engine and its persisted results.
+
+    Each consideration is one short line about one variable, read over the same
+    window the verdict reads. Two rules keep it legible:
+
+    * **Aggregate, do not sample.** Reporting the first wet hour beside a
+      verdict that reports the whole window puts "83%, 0.7 mm" under "96%,
+      13.1 mm" and reads as a contradiction. Both were true; only one was the
+      answer to the question.
+    * **State the figure, not advice about the figure.** "consider that
+      reported precipitation in your plans" told the reader nothing they did
+      not already know from the number beside it. The recommendation is the
+      verdict's job, and it does it in one sentence that names the activity.
     """
+    hours = forecast.hourly[: max(1, window_hours)]
     items: list[RiskConsideration] = []
-    if current.current.condition_description:
+
+    now = current.current
+    if now.condition_description or now.temperature_c is not None:
+        parts = [now.condition_description] if now.condition_description else []
+        if now.temperature_c is not None:
+            parts.append(f"{now.temperature_c:.1f} °C")
         items.append(
             RiskConsideration(
                 field="current.condition_description",
-                statement=f"Current conditions are reported as {current.current.condition_description}.",
-                valid_at=current.current.observed_at,
+                statement=f"Now: {', '.join(parts)}.",
+                valid_at=now.observed_at,
             )
         )
 
-    rainy_hours = [
-        point
-        for point in forecast.hourly
-        if (point.precipitation_mm is not None and point.precipitation_mm > 0)
-        or (point.precipitation_probability_pct is not None and point.precipitation_probability_pct > 0)
+    probabilities = [
+        point.precipitation_probability_pct
+        for point in hours
+        if point.precipitation_probability_pct is not None
     ]
-    if rainy_hours:
-        first = rainy_hours[0]
-        pieces: list[str] = []
-        if first.precipitation_probability_pct is not None:
-            pieces.append(f"precipitation probability {first.precipitation_probability_pct:g}%")
-        if first.precipitation_mm is not None:
-            pieces.append(f"precipitation {first.precipitation_mm:g} mm")
+    amounts = [
+        point.precipitation_mm for point in hours if point.precipitation_mm is not None
+    ]
+    if probabilities or amounts:
+        parts = []
+        if probabilities:
+            parts.append(f"{max(probabilities):.0f}% peak chance")
+        if amounts:
+            parts.append(f"{sum(amounts):.1f} mm total")
+        statement = f"Rain: {', '.join(parts)}"
+        # The wettest hour is the one worth planning around, and it is the only
+        # timestamp this answer needs.
+        wettest = max(
+            (point for point in hours if point.precipitation_mm),
+            key=lambda point: point.precipitation_mm or 0.0,
+            default=None,
+        )
+        if wettest is not None and (wettest.precipitation_mm or 0) > 0:
+            statement += f"; heaviest around {wettest.valid_at.isoformat()}"
         items.append(
             RiskConsideration(
                 field="forecast.hourly.precipitation",
-                statement=(
-                    f"The forecast reports {' and '.join(pieces)} at {first.valid_at.isoformat()}; "
-                    + _planning_clause(purpose, "precipitation")
-                ),
-                valid_at=first.valid_at,
+                statement=statement + ".",
+                valid_at=(wettest or hours[0]).valid_at if hours else None,
             )
         )
 
-    windy_hours = [point for point in forecast.hourly if point.wind_gust_ms is not None]
-    if windy_hours:
-        gustiest = max(windy_hours, key=lambda point: point.wind_gust_ms or -1)
+    gusts = [point for point in hours if point.wind_gust_ms is not None]
+    if gusts:
+        gustiest = max(gusts, key=lambda point: point.wind_gust_ms or -1.0)
         assert gustiest.wind_gust_ms is not None
         items.append(
             RiskConsideration(
                 field="forecast.hourly.wind_gust_ms",
-                statement=(
-                    f"The highest reported forecast gust is {gustiest.wind_gust_ms:g} m/s at "
-                    f"{gustiest.valid_at.isoformat()}; {_planning_clause(purpose, 'wind') }"
-                ),
+                # A gust reported to four decimal places is a unit conversion
+                # showing through, not a measurement anyone can act on.
+                statement=f"Wind: gusts to {gustiest.wind_gust_ms:.0f} m/s.",
                 valid_at=gustiest.valid_at,
             )
         )
@@ -400,8 +438,8 @@ def _considerations(
             RiskConsideration(
                 field="forecast.daily.temperature_max_c",
                 statement=(
-                    f"The reported daily maximum is {warmest.temperature_max_c:g} °C on "
-                    f"{warmest.date.isoformat()}; use local crop guidance when planning field work."
+                    f"Warmest day: {warmest.temperature_max_c:.1f} °C on "
+                    f"{warmest.date.isoformat()}."
                 ),
                 valid_at=warmest.date,
             )
@@ -410,20 +448,9 @@ def _considerations(
         items.append(
             RiskConsideration(
                 field="current.visibility_m",
-                statement=(
-                    f"Current reported visibility is {current.current.visibility_m:g} m; "
-                    "consider it alongside route-specific transport information."
-                ),
+                statement=f"Visibility: {current.current.visibility_m:.0f} m.",
                 valid_at=current.current.observed_at,
             )
         )
 
     return items
-
-
-def _planning_clause(purpose: AdvisoryPurpose, topic: str) -> str:
-    if purpose is AdvisoryPurpose.AGRICULTURE:
-        return f"consider that reported {topic} when timing field activity."
-    if purpose is AdvisoryPurpose.TRAVEL:
-        return f"consider that reported {topic} when planning travel timing."
-    return f"consider that reported {topic} in your plans."

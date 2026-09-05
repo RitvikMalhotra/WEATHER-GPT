@@ -75,6 +75,12 @@ def rank(
     preserves whatever relevance the gazetteer itself computed.
     """
     wanted = fold(query)
+    mentioned_countries = {
+        fold(location.country)
+        for location in results
+        if location.country and fold(location.country) in wanted
+    }
+    explicit_country = bool(mentioned_countries)
 
     def score(item: tuple[int, Location]) -> tuple[float, int]:
         index, location = item
@@ -87,6 +93,9 @@ def rank(
             points += 100.0
         elif wanted and wanted in fold(location.name):
             points += 40.0
+
+        if not explicit_country and fold(location.country) == "india":
+            points += 200.0
 
         if near is not None:
             separation = distance_km(near, location.coordinates)
