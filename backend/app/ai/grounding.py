@@ -10,6 +10,7 @@ weather value, so it cannot alter one on the way through.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable
 
@@ -365,17 +366,31 @@ class GroundedRenderer:
 
     def _alerts(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         response = AlertListResponse.model_validate(result.data)
-        lines = [catalog.label("alerts_count", count=response.count)]
+        if not response.alerts:
+            return RenderedAnswer("No active alerts were found for this location.")
+
+        groups = defaultdict(list)
         for alert in response.alerts:
-            lines.append(
-                f"- {alert.title} ({alert.severity.value}, {alert.kind.value}, "
-                f"{alert.status.value}) from {alert.valid_from.isoformat()} to "
-                f"{alert.valid_until.isoformat()}: {alert.description}"
+            groups[(alert.title, alert.severity.value)].append(alert)
+
+        lines = [f"I found {response.count} active weather alerts."]
+        for (title, severity), alerts in groups.items():
+            start = min(alert.valid_from for alert in alerts)
+            end = max(alert.valid_until for alert in alerts)
+            values = [alert.evidence.observed_value for alert in alerts]
+            thresholds = {alert.evidence.threshold for alert in alerts}
+            summary = f"- {title}: {len(alerts)} {severity} alert(s), from "
+            summary += (
+                f"{start.strftime('%d-%m-%Y %I:%M %p')} to "
+                f"{end.strftime('%d-%m-%Y %I:%M %p')}"
             )
-        # The disclaimer is reproduced exactly as the backend issued it; a
-        # translated safety statement would be a statement we authored.
-        lines.append(response.disclaimer)
-        return RenderedAnswer("\n".join(lines), safety_note=response.disclaimer)
+            if len(thresholds) == 1:
+                unit = alerts[0].evidence.unit
+                summary += f"; {unit} ranged from {min(values):g} to {max(values):g}"
+                summary += f" (threshold {next(iter(thresholds)):g} {unit})"
+            lines.append(summary + ".")
+
+        return RenderedAnswer("\n".join(lines))
 
     def _risk(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         risk = LocationRiskResult.model_validate(result.data)
