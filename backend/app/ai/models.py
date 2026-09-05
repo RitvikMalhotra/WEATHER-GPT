@@ -8,6 +8,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.domain.alert import (
+    AlertEvidence,
+    AlertKind,
+    AlertSeverity,
+    AlertSourceType,
+    AlertStatus,
+    AlertType,
+)
 from app.domain.location import Coordinates, Location
 from app.domain.provenance import DataProvenance
 
@@ -195,6 +203,32 @@ class LocationRiskResult(BaseModel):
     alerts: dict[str, Any] | None = None
 
 
+class AlertConversationContext(BaseModel):
+    """The alert a person clicked, carried into the existing conversation."""
+
+    id: str
+    alert_type: AlertType
+    severity: AlertSeverity
+    status: AlertStatus
+    source_type: AlertSourceType
+    kind: AlertKind
+    rule_id: str
+    title: str
+    description: str
+    latitude: float
+    longitude: float
+    location_name: str | None = None
+    admin1: str | None = None
+    country: str | None = None
+    timezone: str | None = None
+    triggered_at: datetime
+    valid_from: datetime
+    valid_until: datetime
+    resolved_at: datetime | None = None
+    evidence: AlertEvidence
+    provenance: DataProvenance
+
+
 class ChatRequest(BaseModel):
     """Input to the AI endpoint.
 
@@ -205,6 +239,9 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=4_000)
     session_id: str | None = Field(default=None, min_length=1, max_length=128)
+    alert_context: AlertConversationContext | None = Field(
+        default=None, description="The exact alert selected from the Alerts panel."
+    )
     language: str | None = Field(
         default=None,
         min_length=2,

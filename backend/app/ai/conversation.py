@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from app.ai.models import AdvisoryPurpose, Intent, LocationInput
+from app.ai.models import AdvisoryPurpose, AlertConversationContext, Intent, LocationInput
 from app.domain.location import Location
 
 
@@ -29,6 +29,7 @@ class ConversationState(BaseModel):
     language: str = "en"
     purpose: AdvisoryPurpose = AdvisoryPurpose.GENERAL
     last_intent: Intent = Intent.UNKNOWN
+    alert_context: AlertConversationContext | None = None
 
 
 class InMemoryConversationStore:

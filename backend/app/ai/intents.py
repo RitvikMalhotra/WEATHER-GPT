@@ -43,7 +43,8 @@ _COORDINATES = re.compile(
 #: "about" is here for the follow-up that carries a conversation forward:
 #: "What about Miyapur?" names a place and nothing else.
 _PLACED = re.compile(
-    r"\b(?:in|at|for|near|around|of|about|over)\s+(?P<place>[^?!,;.]+)", re.IGNORECASE
+    r"\b(?:in|at|for|near|around|of|about|over)\s+(?P<place>[^?!,;.]+?)(?=\s+(?:in|at|for|near|around|of|about|over|that|and|where|which|when|is|was|will|can|could|should)\b|[?!,;.]|$)",
+    re.IGNORECASE,
 )
 # "travel to Pune" carries a place; "going to rain" does not. Only verbs that
 # genuinely take a destination are listed, so a plain infinitive never becomes
@@ -213,8 +214,12 @@ class IntentDetector:
             "event_phrase": when.event.phrase if when.event else None,
         }
 
-        # Existing WeatherGPT rule alerts. Left exactly as they were.
-        if ALERT_SUBJECT.search(normalized):
+        # Existing WeatherGPT rule alerts. A clicked alert is also valid context
+        # for short follow-ups that refer to "this" or its end/severity.
+        if ALERT_SUBJECT.search(normalized) or (
+            state.alert_context is not None
+            and re.search(r"\b(?:this|that)\b|\b(?:when|how serious|how severe|end|expire|expires|finish)\b", normalized, re.IGNORECASE)
+        ):
             return DetectedRequest(Intent.ALERTS, location, days=when.days, **common)
 
         # Tense decides before anything else, because it decides which *data*
@@ -335,7 +340,12 @@ def _location(message: str, state: ConversationState) -> LocationInput | None:
                 if candidate:
                     return LocationInput(location=candidate)
 
-    for pattern in (_PLACED, _DESTINATION, _SEARCH_TARGET):
+    for match in _PLACED.finditer(message):
+        candidate = _clean_place(match.group("place"))
+        if candidate:
+            return LocationInput(location=candidate)
+
+    for pattern in (_DESTINATION, _SEARCH_TARGET):
         match = pattern.search(message)
         if match:
             candidate = _clean_place(match.group("place"))

@@ -379,29 +379,19 @@ class GroundedRenderer:
 
     def _risk(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         risk = LocationRiskResult.model_validate(result.data)
-        lines = [
-            catalog.label(
-                "risk_for",
-                purpose=catalog.label(f"purpose_{risk.purpose.value}"),
-                place=_place(risk.location.display_name, catalog),
-            )
-        ]
+        place = _place(risk.location.display_name, catalog)
+        lines = [f"{place}: here's what the available weather data shows."]
         if risk.considerations:
             for item in risk.considerations:
-                lines.append(f"- {item.statement}")
+                lines.append(item.statement.rstrip("."))
         else:
-            lines.append(f"- {catalog.label('risk_none')}")
-        if risk.active_alert_count is None:
-            # No count, so no count is stated. Reporting 0 here would turn a
-            # store nobody could read into an all-clear the engine never issued.
-            lines.append(f"- {catalog.label('risk_alerts_unavailable')}")
-        else:
+            lines.append(catalog.label("risk_none"))
+        if risk.active_alert_count:
             lines.append(
-                f"- {catalog.label('risk_active', count=risk.active_alert_count)}"
+                f"I also found {risk.active_alert_count} active WeatherGPT alert "
+                "record(s) for this location."
             )
-        if risk.alert_disclaimer:
-            lines.append(risk.alert_disclaimer)
-        return RenderedAnswer("\n".join(lines), safety_note=risk.alert_disclaimer)
+        return RenderedAnswer(" ".join(lines))
 
     def _locations(self, result: ToolResult, catalog: MessageCatalog) -> RenderedAnswer:
         locations = LocationSearchResponse.model_validate(result.data)

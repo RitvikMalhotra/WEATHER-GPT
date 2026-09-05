@@ -246,7 +246,10 @@ def _agriculture(brief: Brief, language: str, formatter) -> Recommendation:
 
     facts = "; ".join(c for c in (rain, wind) if c)
     pieces = [p for p in (facts, tail) if p]
-    return Recommendation(f"{lead}. {'. '.join(pieces)}." if pieces else f"{lead}.", icon)
+    return Recommendation(
+        f"{lead}. {'. '.join(pieces)}." if pieces else f"{lead}.",
+        icon,
+    )
 
 
 def _travel(brief: Brief, language: str, formatter) -> Recommendation:

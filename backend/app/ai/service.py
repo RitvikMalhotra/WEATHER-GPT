@@ -29,6 +29,7 @@ from app.ai.models import (
     LocationSearchArguments,
     SourceReference,
     ToolResult,
+    AlertConversationContext,
 )
 from app.ai import brief, verdict
 from app.ai.providers import DisabledLLMProvider, LLMProvider, OpenAICompatibleLLMProvider
@@ -95,6 +96,13 @@ class AIService:
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         state = await self._conversations.get_or_create(request.session_id)
+        if request.alert_context is not None:
+            state.alert_context = request.alert_context
+            if state.location is None:
+                state.location = LocationInput(
+                    latitude=request.alert_context.latitude,
+                    longitude=request.alert_context.longitude,
+                )
         detected = self._detector.detect(
             request.message, state, language_hint=request.language
         )
@@ -468,6 +476,7 @@ def _tool_context(state: ConversationState, *, language: str | None = None) -> d
         "language": language or state.language,
         "purpose": state.purpose.value,
         "last_intent": state.last_intent.value,
+        "alert_context": state.alert_context.model_dump(mode="json", exclude_none=True) if state.alert_context else None,
     }
 
 

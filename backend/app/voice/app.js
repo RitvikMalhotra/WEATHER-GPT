@@ -326,7 +326,7 @@
 
   /* --------------------------------------------------------------- the API */
 
-  async function postChat(message) {
+  async function postChat(message, alertContext) {
     const response = await fetch(CHAT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,6 +334,7 @@
         message,
         session_id: state.sessionId,
         language: state.language.base,
+        alert_context: alertContext || undefined,
       }),
     });
     if (!response.ok) {
@@ -916,7 +917,7 @@
 
     let body;
     try {
-      body = await postChat(message);
+      body = await postChat(message, settings.alertContext || state.alertContext);
     } catch (error) {
       working.remove();
       setBusy(false);
@@ -1587,6 +1588,28 @@
       source.appendChild(line);
       card.appendChild(source);
     }
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    const openAlert = () => {
+      state.alertContext = {
+        ...alert,
+        location_name: alert.location_name || null,
+        admin1: alert.admin1 || null,
+        country: alert.country || null,
+      };
+      togglePopover(el.alertsButton, el.alertsPanel);
+      ask("Explain this weather alert and what it means for me.", {
+        silentUser: false,
+        alertContext: state.alertContext,
+      });
+    };
+    card.addEventListener("click", openAlert);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openAlert();
+      }
+    });
     return card;
   }
 
@@ -1654,7 +1677,16 @@
       const alerts = Array.isArray(item.alerts) ? item.alerts : [];
       if (alerts.length) {
         const list = make("div", "watched__alerts");
-        for (const alert of alerts) list.appendChild(hazardCard(alert));
+        for (const alert of alerts) {
+          const contextualAlert = {
+            ...alert,
+            location_name: item.location.name || null,
+            admin1: item.location.admin1 || null,
+            country: item.location.country || null,
+            timezone: alert.timezone || item.location.timezone || null,
+          };
+          list.appendChild(hazardCard(contextualAlert));
+        }
         row.appendChild(list);
       } else if (item.evaluated) {
         const clear = make("div", "watch__clear");
