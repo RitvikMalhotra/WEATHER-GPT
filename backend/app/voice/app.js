@@ -831,14 +831,6 @@
     card.appendChild(footer);
   }
 
-  function renderNote(card, text) {
-    if (!text) return;
-    const note = make("div", "note");
-    note.appendChild(icon("ic-alert"));
-    note.appendChild(make("p", null, text));
-    card.appendChild(note);
-  }
-
   async function renderAnswer(body, question) {
     const { wrapper, card } = agentShell();
     const result = (body.tool_results && body.tool_results[0]) || null;
@@ -862,7 +854,6 @@
     }
 
     renderVerdict(card, body.verdict);
-    renderNote(card, body.safety_note);
     renderSource(card, body.sources);
 
     const turn = addTurn("agent", wrapper);
