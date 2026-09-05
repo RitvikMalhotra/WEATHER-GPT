@@ -25,6 +25,7 @@ from app.ai.models import (
     Intent,
     LLMToolSelection,
     LocationInput,
+    LocationRiskResult,
     LocationRiskArguments,
     LocationSearchArguments,
     SourceReference,
@@ -391,6 +392,9 @@ async def _verdict_for(
             data = Forecast.model_validate(result.data)
         elif detected.intent is Intent.HISTORICAL_WEATHER:
             data = HistoricalWeatherResponse.model_validate(result.data).observations
+        elif detected.intent is Intent.LOCATION_RISK:
+            risk = LocationRiskResult.model_validate(result.data)
+            data = Forecast.model_validate(risk.forecast)
         else:
             return None
     except ValidationError:
