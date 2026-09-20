@@ -156,6 +156,36 @@ _WEEKDAYS = {
 
 _ISO_DATE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 
+#: A calendar date given as a month name rather than digits: "September 3rd",
+#: "3rd September", "Sep 3, 2026". The two word orders are both current usage
+#: — "on September 3rd" and "on 3rd September" are the same date read by an
+#: American and an Indian speaker — so both are matched rather than treating
+#: one as canonical.
+#:
+#: A year that is only two digits is not accepted: "on 9/3/26" is ambiguous
+#: between day, month and year in a way "September 3, 2026" is not, and this
+#: pattern exists to resolve names, not to guess at short numeric dates.
+_MONTHS = {
+    name: index
+    for index, names in enumerate(
+        [
+            ("jan", "january"), ("feb", "february"), ("mar", "march"),
+            ("apr", "april"), ("may",), ("jun", "june"),
+            ("jul", "july"), ("aug", "august"), ("sep", "sept", "september"),
+            ("oct", "october"), ("nov", "november"), ("dec", "december"),
+        ],
+        start=1,
+    )
+    for name in names
+}
+_MONTH_ALTERNATION = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTH_DATE = re.compile(
+    rf"\b(?:(?P<day1>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<month1>{_MONTH_ALTERNATION})\.?"
+    rf"|(?P<month2>{_MONTH_ALTERNATION})\.?\s+(?P<day2>\d{{1,2}})(?:st|nd|rd|th)?)"
+    rf"(?:\s*,?\s*(?P<year>\d{{4}}))?\b",
+    re.IGNORECASE,
+)
+
 # --- past ---
 _AGO = re.compile(
     rf"\b({_COUNT})\s*({_UNIT_ALTERNATION})\s*(?:ago|back|earlier|pehle|pahle|before)\b",
@@ -428,6 +458,29 @@ def references(message: str, *, now: datetime | None = None) -> list[TimeReferen
         else:
             hours = (day - today).days * 24 + 24
             add(_forward(match.group(1), 0, hours), match.start())
+
+    for match in _MONTH_DATE.finditer(message):
+        month = _MONTHS[(match.group("month1") or match.group("month2")).lower()]
+        day_number = int(match.group("day1") or match.group("day2"))
+        year = int(match.group("year")) if match.group("year") else today.year
+        try:
+            day = date(year, month, day_number)
+        except ValueError:
+            continue  # "February 30th" and the like: not a real calendar day.
+        # No year stated: read against *this* year, exactly like the ISO-date
+        # branch above reads an explicit one. "The weather on September 3rd"
+        # asked in September means the September 3rd just gone; asked in July
+        # it means the one still coming — a person names a bare month-day
+        # expecting the nearest one, not a fixed direction. Only the sentence's
+        # own tense (a "was" or a "will" elsewhere) should ever override which
+        # way that near date is read, and `plan()` gives that a fixed date a
+        # cue can never win against.
+        tense = Tense.PAST if day <= today else Tense.FUTURE
+        if tense is Tense.PAST:
+            add(_calendar(Tense.PAST, match.group(0), 0, day, day), match.start())
+        else:
+            hours = (day - today).days * 24 + 24
+            add(_forward(match.group(0), 0, hours), match.start())
 
     # --- explicit future -------------------------------------------------
     for pattern in (_IN_N, _IN_N_DEV, _N_LATER, _N_LATER_DEV):

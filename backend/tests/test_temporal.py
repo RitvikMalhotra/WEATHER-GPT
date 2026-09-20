@@ -113,6 +113,52 @@ def test_a_daypart_narrows_a_calendar_reference() -> None:
     assert resolved.target.local_hours == (17, 21)
 
 
+# ------------------------------------------------------- a named calendar date
+#
+# Only "yesterday", "N days ago" and a bare ISO stamp resolved to a date; a
+# month by name resolved to nothing, silently. "What was the rainfall on
+# September 3rd" reached the historical-weather tool with no date attached at
+# all, so it asked the person to supply the date they had just supplied.
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "What was the rainfall on September 3rd?",
+        "What was the rainfall on September 3, 2026?",
+        "What was the rainfall on 3rd September?",
+        "What was the rainfall on Sep 3, 2026?",
+    ],
+)
+def test_a_named_month_and_day_resolves_to_that_calendar_date(message: str) -> None:
+    resolved = plan(message, now=NOW)
+    assert resolved.tense is Tense.PAST
+    assert resolved.target is not None
+    assert resolved.target.start_date == NOW.date().replace(month=9, day=3)
+
+
+def test_a_future_month_and_day_is_a_forecast_not_a_history_lookup() -> None:
+    """A bare date is read against the nearer occurrence, not always the past
+    one: asked in September, "October 10th" is a date still coming, and the
+    fixed rollback that once forced every bare date backward a year turned
+    this into a request for history about a day that had not happened yet."""
+    resolved = plan("What will the weather be on October 10th?", now=NOW)
+    assert resolved.tense is Tense.FUTURE
+
+
+def test_a_bare_month_and_day_already_past_this_year_reads_as_this_year() -> None:
+    resolved = plan("What was the rainfall on January 5th?", now=NOW)
+    assert resolved.target is not None
+    assert resolved.target.start_date == NOW.date().replace(month=1, day=5)
+
+
+def test_an_invalid_calendar_date_is_not_a_crash() -> None:
+    """"February 30th" is not a real day; it must be read as no date at all,
+    not raise, and not silently become some other date."""
+    resolved = plan("What was the rainfall on February 30th?", now=NOW)
+    assert resolved.target is None or resolved.target.start_date is None
+
+
 def test_a_48_hour_question_asks_for_enough_forecast_days() -> None:
     assert plan("Is there rain expected in 48 hours?", now=NOW).days >= 3
 
